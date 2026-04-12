@@ -58,7 +58,9 @@ export async function syncLeadBasic(phone: string, name?: string): Promise<void>
     }
 
     // Criar deal + contato
-    const leadName = name || lead.name || 'Lead WhatsApp';
+    // Usar telefone formatado como fallback (nunca "Lead WhatsApp" genérico)
+    const formattedPhone = phone.replace(/^55(\d{2})(\d+)/, '($1) $2');
+    const leadName = name || lead.name || formattedPhone;
     const deal = await createDeal(leadName, phone, env.RD_STAGE_CONTATO_FEITO);
     const contactId = await resolveContactId(phone);
 

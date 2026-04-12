@@ -14,6 +14,7 @@ import { logEvent } from '../database/events.repo';
 import { getNextAvailableSlots } from '../scheduling/availability';
 import { createEvent, deleteEvent, updateEvent, findEventByLeadName, listEvents, checkFreeBusy } from '../scheduling/calendar.service';
 import { syncLeadCreated, syncLeadScheduled } from '../crm/sync';
+import { updateDeal, updateContact } from '../crm/rdstation.service';
 import { trackToolCall } from '../monitoring/metrics';
 import { notifyLeadScheduled } from '../monitoring/alerts';
 
@@ -82,6 +83,18 @@ async function execCadastraLead(args: Record<string, string>, phone: string): Pr
         syncLeadScheduled(lead).catch((err) => logger.error('CRM sync falhou (scheduled)', { phone, error: err }));
       } else {
         syncLeadCreated(lead).catch((err) => logger.error('CRM sync falhou (created)', { phone, error: err }));
+      }
+
+      // Atualizar nome do deal e contato no RD (se nome mudou)
+      if (args.nome_completo && lead.rd_deal_id) {
+        updateDeal(lead.rd_deal_id, { name: `${args.nome_completo} - Lead IA` }).catch((err) =>
+          logger.warn('Falha ao atualizar nome do deal no RD', { phone, error: err }),
+        );
+      }
+      if (args.nome_completo && lead.rd_contact_id) {
+        updateContact(lead.rd_contact_id, { name: args.nome_completo }).catch((err) =>
+          logger.warn('Falha ao atualizar nome do contato no RD', { phone, error: err }),
+        );
       }
     }
 
