@@ -10,6 +10,7 @@ import { handleOAuthStart, handleOAuthCallback } from './scheduling/google-oauth
 import { whatsappHandler } from './webhook/whatsapp.handler';
 import { formHandler } from './webhook/form.handler';
 import { plugaHandler } from './webhook/pluga.handler';
+import { metaVerifyHandler, metaLeadHandler } from './webhook/meta-leads.handler';
 import { startFollowupScheduler } from './followup/scheduler';
 import { startAlertScheduler, sendAlert } from './monitoring/alerts';
 import { startMetricsResetScheduler } from './monitoring/metrics';
@@ -58,6 +59,10 @@ async function start(): Promise<void> {
   app.get('/webhook/pluga/test', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString(), message: 'Webhook Pluga ativo' });
   });
+
+  // Meta Lead Ads — webhook direto
+  app.get('/webhook/meta', metaVerifyHandler);
+  app.post('/webhook/meta', metaLeadHandler);
 
   // Cron jobs
   startFollowupScheduler();
