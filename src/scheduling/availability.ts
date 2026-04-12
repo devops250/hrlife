@@ -1,5 +1,5 @@
 import { SCHEDULE, getAvailableSlots, formatSlotPtBr, getSaoPauloNow } from '../config/schedule';
-import { listEvents } from './calendar.service';
+import { checkFreeBusy } from './calendar.service';
 import { isHoliday } from '../utils/holidays';
 import { logger } from '../utils/logger';
 import type { AvailableSlot } from './types';
@@ -11,22 +11,13 @@ export async function getNextAvailableSlots(
   const now = getSaoPauloNow();
   const slots: AvailableSlot[] = [];
 
-  // Buscar eventos dos próximos 14 dias
+  // Buscar ocupação real dos próximos 14 dias via freeBusy
   const endDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-  const events = await listEvents(now, endDate);
+  const busyPeriods = await checkFreeBusy(now, endDate);
 
-  // Filtrar apenas eventos confirmados (excluir cancelados e recusados)
-  const confirmedEvents = events.filter((event) => {
-    // Eventos com status cancelado são descartados
-    if (event.status === 'cancelled') return false;
-    // Manter todos os outros (confirmed, tentative, sem status)
-    return true;
-  });
-
-  logger.info('Buscando slots disponíveis', {
+  logger.info('Buscando slots disponíveis via freeBusy', {
     period,
-    eventsTotal: events.length,
-    eventsConfirmed: confirmedEvents.length,
+    busyPeriods: busyPeriods.length,
   });
 
   // Iterar próximos 14 dias
@@ -55,26 +46,22 @@ export async function getNextAvailableSlots(
       const slotDate = new Date(date);
       slotDate.setHours(hours, minutes, 0, 0);
 
-      // Pular slots no passado (hoje) — margem de 30 min
+      // Pular slots no passado — margem de 30 min
       if (dayOffset === 0 && slotDate.getTime() <= now.getTime() + 30 * 60 * 1000) continue;
 
-      // Verificar se o slot está ocupado — usar timezone-aware comparison
+      // Verificar ocupação via freeBusy (fonte real de verdade)
       const slotStart = slotDate.getTime();
       const slotEnd = slotStart + 60 * 60 * 1000; // +1h
 
-      const isOccupied = confirmedEvents.some((event) => {
-        const eventStart = event.start.getTime();
-        const eventEnd = event.end.getTime();
-        // Overlap: evento começa antes do slot acabar E evento termina depois do slot começar
-        return eventStart < slotEnd && eventEnd > slotStart;
+      const isOccupied = busyPeriods.some((busy) => {
+        const busyStart = busy.start.getTime();
+        const busyEnd = busy.end.getTime();
+        return busyStart < slotEnd && busyEnd > slotStart;
       });
 
       if (isOccupied) {
-        logger.debug('Slot ocupado, pulando', {
+        logger.debug('Slot ocupado (freeBusy), pulando', {
           slot: formatSlotPtBr(slotDate, time),
-          conflictingEvent: confirmedEvents.find((e) =>
-            e.start.getTime() < slotEnd && e.end.getTime() > slotStart,
-          )?.summary,
         });
         continue;
       }

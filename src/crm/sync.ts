@@ -10,6 +10,7 @@ import { updateLeadData, findLeadByPhone, type Lead } from '../database/leads.re
 import { logEvent } from '../database/events.repo';
 import { logger } from '../utils/logger';
 import { trackRdSync } from '../monitoring/metrics';
+import { redisClient } from '../index';
 
 /**
  * Busca o contact_id após criar um deal (o deal cria o contato junto).
@@ -167,6 +168,14 @@ export async function syncLeadCreated(lead: Lead): Promise<void> {
  * Fix: verifica rd_deal_id local antes de criar novo deal (evita duplicados).
  */
 export async function syncLeadScheduled(lead: Lead): Promise<void> {
+  // C3: Mutex Redis — evitar race condition de deals duplicados
+  const lockKey = `sync_scheduled_lock:${lead.phone}`;
+  const locked = await redisClient.set(lockKey, '1', { NX: true, EX: 30 });
+  if (!locked) {
+    logger.info('syncLeadScheduled já em andamento, ignorando', { phone: lead.phone });
+    return;
+  }
+
   try {
     const freshLead = await findLeadByPhone(lead.phone) || lead;
     const leadName = freshLead.name || lead.name || 'Lead';
@@ -269,6 +278,8 @@ export async function syncLeadScheduled(lead: Lead): Promise<void> {
     trackRdSync(false);
     logger.error('CRM sync falhou (lead agendado)', { phone: lead.phone, error });
     await logEvent('error', lead.phone, { crm_sync: 'lead_scheduled', error: String(error) });
+  } finally {
+    await redisClient.del(lockKey);
   }
 }
 

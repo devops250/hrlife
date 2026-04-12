@@ -200,7 +200,25 @@ async function executeTool(name: string, args: Record<string, string>, phone: st
   }
 }
 
+// Dedup: evitar cadastra_lead duplicada na mesma fase
+const recentCadastro = new Map<string, number>();
+
 async function execCadastraLead(args: Record<string, string>, phone: string): Promise<string> {
+  // Validar nome
+  const invalidNames = ['cliente', 'lead', 'usuário', 'usuario', 'olá', 'ola', ''];
+  if (invalidNames.includes(args.nome_completo?.toLowerCase()?.trim())) {
+    return 'Nome inválido. Pergunte o nome completo do lead antes de cadastrar.';
+  }
+
+  // Dedup: se já chamou nos últimos 30s com mesmo agendado, pular
+  const dedupeKey = `${phone}:${args.agendado}`;
+  const lastCall = recentCadastro.get(dedupeKey);
+  if (lastCall && Date.now() - lastCall < 30000) {
+    logger.info('cadastra_lead duplicada ignorada', { phone, agendado: args.agendado });
+    return `Dados de ${args.nome_completo} já registrados.`;
+  }
+  recentCadastro.set(dedupeKey, Date.now());
+
   try {
     await updateLeadData(phone, {
       name: args.nome_completo || undefined,

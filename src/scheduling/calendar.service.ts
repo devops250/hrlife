@@ -135,6 +135,29 @@ export async function updateEvent(eventId: string, params: UpdateEventParams): P
   );
 }
 
+export async function checkFreeBusy(startDate: Date, endDate: Date): Promise<Array<{ start: Date; end: Date }>> {
+  return retry(
+    async () => {
+      const calendar = await getCalendar();
+      const res = await calendar.freebusy.query({
+        requestBody: {
+          timeMin: startDate.toISOString(),
+          timeMax: endDate.toISOString(),
+          timeZone: 'America/Sao_Paulo',
+          items: [{ id: env.GOOGLE_CALENDAR_ID }],
+        },
+      });
+
+      const busy = res.data.calendars?.[env.GOOGLE_CALENDAR_ID]?.busy || [];
+      return busy.map((b) => ({
+        start: new Date(b.start || ''),
+        end: new Date(b.end || ''),
+      }));
+    },
+    { label: 'calendar.checkFreeBusy' },
+  );
+}
+
 export async function findEventByLeadName(leadName: string): Promise<CalendarEvent | null> {
   const now = new Date();
   const future = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 dias

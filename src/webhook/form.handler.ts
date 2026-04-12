@@ -8,7 +8,9 @@ import { generateFirstMessage } from '../conversation/first-message';
 import { syncLeadCreated } from '../crm/sync';
 import { syncOutgoingMessage } from '../chatwoot/sync';
 import { incrementMetric } from '../monitoring/metrics';
-import { notifyNewLead } from '../monitoring/alerts';
+import { notifyNewLead, notifyProblem } from '../monitoring/alerts';
+import { NotOnWhatsAppError } from '../whatsapp/uazapi.client';
+import { query } from '../database/client';
 
 // Mapeamento flexível de campos — Meta Lead Ads pode usar vários formatos
 const NAME_FIELDS = ['nome', 'name', 'full_name', 'nome_completo', 'first_name'];
@@ -72,18 +74,27 @@ export async function formHandler(req: Request, res: Response): Promise<void> {
     }
 
     // Enviar primeira mensagem
-    const firstMessage = generateFirstMessage(nome || 'Olá');
-    await uazapi.sendText(phone, firstMessage);
-    await updateLeadIaMessage(phone);
-    await logEvent('first_message_sent', phone, { source: 'meta_form' });
+    try {
+      const firstMessage = generateFirstMessage(nome || 'Olá');
+      await uazapi.sendText(phone, firstMessage);
+      await updateLeadIaMessage(phone);
+      await logEvent('first_message_sent', phone, { source: 'meta_form' });
+      logger.info('Primeira mensagem enviada para lead do formulário', { phone, nome });
 
-    logger.info('Primeira mensagem enviada para lead do formulário', { phone, nome });
+      syncOutgoingMessage(phone, firstMessage).catch((err) => logger.warn('Chatwoot sync falhou (form)', { phone, error: err }));
+    } catch (sendError) {
+      if (sendError instanceof NotOnWhatsAppError) {
+        await query("UPDATE leads SET status = 'invalid_phone', updated_at = NOW() WHERE phone = $1", [phone]);
+        await logEvent('lead_invalid_phone', phone, { source: 'meta_form' });
+        notifyProblem('Lead com número inválido no WhatsApp', { phone, nome, fonte: 'Meta Form' }).catch(() => {});
+        logger.warn('Número não está no WhatsApp (form)', { phone, nome });
+      } else {
+        throw sendError;
+      }
+    }
 
-    // Sync com RD Station (criar contato + deal)
+    // Sync com RD Station
     syncLeadCreated(lead).catch((err) => logger.error('CRM sync async falhou (form)', { phone, error: err }));
-
-    // Espelhar no Chatwoot
-    syncOutgoingMessage(phone, firstMessage).catch((err) => logger.warn('Chatwoot sync falhou (form)', { phone, error: err }));
   } catch (error) {
     logger.error('Erro no form handler', { error });
     await logEvent('error', undefined, { handler: 'form', error: String(error) });
