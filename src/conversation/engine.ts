@@ -12,13 +12,14 @@ import { getSaoPauloNow } from '../config/schedule';
 import { getNextAvailableSlots } from '../scheduling/availability';
 import { createEvent, deleteEvent, updateEvent, findEventByLeadName } from '../scheduling/calendar.service';
 import { syncLeadCreated, syncLeadScheduled } from '../crm/sync';
-import { incrementMetric } from '../monitoring/metrics';
+import { incrementMetric, trackToolCall, trackAiLatency } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
 
 const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
 const TIMEOUT_MS = 30000;
 const TIMEOUT_MESSAGE = 'Desculpe, estou com lentidão. Pode repetir sua mensagem?';
+const FALLBACK_MESSAGE = 'Nosso sistema está temporariamente indisponível. Um de nossos especialistas vai entrar em contato com você em breve. Pedimos desculpas pelo inconveniente! 🙏';
 
 export async function processConversation(phone: string, chatInput: string): Promise<void> {
   const startTime = Date.now();
@@ -51,7 +52,17 @@ export async function processConversation(phone: string, chatInput: string): Pro
 
     await addMessage(phone, 'user', chatInput);
 
-    let response = await callClaudeWithTimeout(systemPrompt, messages);
+    let response: Anthropic.Message;
+    try {
+      response = await callClaudeWithTimeout(systemPrompt, messages);
+    } catch (aiError) {
+      logger.error('Claude API falhou, enviando fallback', { phone, error: String(aiError) });
+      await logEvent('error', phone, { ai_fallback: true, error: String(aiError) });
+      incrementMetric('errors');
+      await addMessage(phone, 'assistant', FALLBACK_MESSAGE);
+      await uazapi.sendText(phone, FALLBACK_MESSAGE);
+      return;
+    }
 
     while (response.stop_reason === 'tool_use') {
       const toolUseBlocks = response.content.filter(
@@ -71,7 +82,7 @@ export async function processConversation(phone: string, chatInput: string): Pro
           args,
           result: result.substring(0, 500),
         });
-        incrementMetric('toolCalls');
+        trackToolCall(toolBlock.name);
 
         toolResults.push({
           type: 'tool_result',
@@ -88,7 +99,16 @@ export async function processConversation(phone: string, chatInput: string): Pro
         return;
       }
 
-      response = await callClaudeWithTimeout(systemPrompt, messages);
+      try {
+        response = await callClaudeWithTimeout(systemPrompt, messages);
+      } catch (aiError) {
+        logger.error('Claude API falhou no loop de tools, enviando fallback', { phone, error: String(aiError) });
+        await logEvent('error', phone, { ai_fallback: true, error: String(aiError) });
+        incrementMetric('errors');
+        await addMessage(phone, 'assistant', FALLBACK_MESSAGE);
+        await uazapi.sendText(phone, FALLBACK_MESSAGE);
+        return;
+      }
     }
 
     const textBlock = response.content.find(
@@ -106,7 +126,8 @@ export async function processConversation(phone: string, chatInput: string): Pro
     await updateLeadIaMessage(phone);
 
     const latency = Date.now() - startTime;
-    await logEvent('ai_response', phone, { latency_ms: latency });
+    trackAiLatency(latency);
+    await logEvent('ai_response', phone, { latency_ms: latency, model: env.ANTHROPIC_MODEL });
     incrementMetric('aiResponses');
     incrementMetric('totalResponseTimeMs', latency);
     incrementMetric('responseCount');

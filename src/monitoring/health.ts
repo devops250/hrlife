@@ -3,9 +3,10 @@ import { testConnection } from '../database/client';
 import { redisClient } from '../index';
 import { query } from '../database/client';
 import { getLastWebhookTime } from '../database/events.repo';
-import { metrics, getAvgResponseTimeMs } from './metrics';
+import { metrics, getAvgResponseTimeMs, getMetricsSummary } from './metrics';
 import { isBusinessHours } from '../config/schedule';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 
 export async function healthCheck(_req: Request, res: Response): Promise<void> {
   let postgresOk = false;
@@ -15,6 +16,7 @@ export async function healthCheck(_req: Request, res: Response): Promise<void> {
   let errorsToday = 0;
   let lastWebhook: string | null = null;
   let followupLastRun: string | null = null;
+  let minutesSinceLastWebhook: number | null = null;
 
   try {
     postgresOk = await testConnection();
@@ -48,6 +50,9 @@ export async function healthCheck(_req: Request, res: Response): Promise<void> {
 
       const lastWh = await getLastWebhookTime();
       lastWebhook = lastWh ? lastWh.toISOString() : null;
+      if (lastWh) {
+        minutesSinceLastWebhook = Math.round((Date.now() - lastWh.getTime()) / (1000 * 60));
+      }
 
       const followupResult = await query(
         "SELECT created_at FROM events WHERE type = 'followup_sent' ORDER BY created_at DESC LIMIT 1",
@@ -58,7 +63,6 @@ export async function healthCheck(_req: Request, res: Response): Promise<void> {
     }
   }
 
-  // Status logic
   let status: 'ok' | 'degraded' | 'down' = 'ok';
 
   if (!postgresOk) {
@@ -79,19 +83,16 @@ export async function healthCheck(_req: Request, res: Response): Promise<void> {
     status,
     postgres: postgresOk ? 'ok' : 'error',
     redis: redisOk ? 'ok' : 'error',
+    ai_model: env.ANTHROPIC_MODEL,
+    ai_engine: 'anthropic',
     uptime_seconds: Math.floor(process.uptime()),
     last_webhook_received: lastWebhook,
+    minutes_since_last_webhook: minutesSinceLastWebhook,
     leads_today: leadsToday,
     responses_today: responsesToday,
     errors_today: errorsToday,
     followup_last_run: followupLastRun,
     avg_response_time_ms: getAvgResponseTimeMs(),
-    metrics_live: {
-      webhooks: metrics.webhooksReceived,
-      ai_responses: metrics.aiResponses,
-      followups: metrics.followupsSent,
-      tool_calls: metrics.toolCalls,
-      errors: metrics.errors,
-    },
+    metrics_live: getMetricsSummary(),
   });
 }
