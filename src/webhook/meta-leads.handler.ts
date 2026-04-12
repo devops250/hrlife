@@ -1,14 +1,9 @@
 import { Request, Response } from 'express';
 import { normalizePhone } from '../utils/phone';
 import { logger } from '../utils/logger';
-import { findLeadByPhone, createLead, updateLeadName, updateLeadIaMessage } from '../database/leads.repo';
 import { logEvent } from '../database/events.repo';
-import { uazapi } from '../whatsapp/uazapi.client';
-import { generateFirstMessage } from '../conversation/first-message';
-import { syncLeadCreated } from '../crm/sync';
 import { incrementMetric } from '../monitoring/metrics';
-import { syncOutgoingMessage } from '../chatwoot/sync';
-import { notifyNewLead } from '../monitoring/alerts';
+import { processIncomingLead } from './lead-pipeline';
 
 const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || '';
 const META_VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'hrlife-sdr-verify-2026';
@@ -140,42 +135,15 @@ async function processMetaLead(leadgenId: string): Promise<void> {
 
     const phone = normalizePhone(telefone);
 
-    await logEvent('webhook_received', phone, {
+    // Delegar ao Pipeline (cuida de tudo: criar, enviar msg, sync CRM, notificar)
+    await processIncomingLead({
+      phone: telefone,
+      name: nome,
+      email: fields.email,
       source: 'meta_lead',
-      leadgenId,
-      nome,
-      email: fields.email || '',
     });
 
-    // Buscar ou criar lead
-    let lead = await findLeadByPhone(phone);
-    if (!lead) {
-      lead = await createLead(phone, nome, 'meta_form');
-      logger.info('Lead criado via Meta Lead Ads', { phone, nome, leadgenId });
-      await logEvent('lead_created', phone, { source: 'meta_lead', leadgenId });
-
-      notifyNewLead(phone, nome, 'meta_form').catch(() => {});
-    } else if (nome) {
-      await updateLeadName(phone, nome);
-    }
-
-    // Enviar primeira mensagem via WhatsApp
-    const firstMessage = generateFirstMessage(nome || 'Olá');
-    await uazapi.sendText(phone, firstMessage);
-    await updateLeadIaMessage(phone);
-    await logEvent('first_message_sent', phone, { source: 'meta_lead', leadgenId });
-
-    logger.info('Meta lead processado com sucesso', { phone, nome, leadgenId });
-
-    // Sync com RD Station
-    syncLeadCreated(lead).catch((err) =>
-      logger.error('CRM sync async falhou (meta lead)', { phone, error: err }),
-    );
-
-    // Espelhar no Chatwoot
-    syncOutgoingMessage(phone, firstMessage).catch((err) =>
-      logger.warn('Chatwoot sync falhou (meta lead)', { phone, error: err }),
-    );
+    logger.info('Meta lead processado via pipeline', { phone, nome, leadgenId });
   } catch (error) {
     logger.error('Erro ao processar meta lead', { leadgenId, error });
     await logEvent('error', undefined, {
