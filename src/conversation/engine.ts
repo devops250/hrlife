@@ -1,5 +1,4 @@
-import OpenAI from 'openai';
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import Anthropic from '@anthropic-ai/sdk';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { buildSystemPrompt } from './prompt';
@@ -16,7 +15,7 @@ import { syncLeadCreated, syncLeadScheduled } from '../crm/sync';
 import { incrementMetric } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
 
-const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
 const TIMEOUT_MS = 30000;
 const TIMEOUT_MESSAGE = 'Desculpe, estou com lentidão. Pode repetir sua mensagem?';
@@ -31,20 +30,18 @@ export async function processConversation(phone: string, chatInput: string): Pro
       return;
     }
 
-    // Verificar se lead foi pausado (Rodrigo assumiu atendimento)
     if (lead.status === 'paused') {
       logger.info('Lead pausado, engine não processa', { phone });
       return;
     }
 
-    // Histórico
     const history = await getHistory(phone, 20);
     const now = getSaoPauloNow();
     const dateStr = now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
-    // Montar mensagens
-    const messages: ChatCompletionMessageParam[] = [
-      { role: 'system', content: buildSystemPrompt(lead.name || '', dateStr) },
+    const systemPrompt = buildSystemPrompt(lead.name || '', dateStr);
+
+    const messages: Anthropic.MessageParam[] = [
       ...history.map((h) => ({
         role: h.role as 'user' | 'assistant',
         content: h.content,
@@ -52,60 +49,59 @@ export async function processConversation(phone: string, chatInput: string): Pro
       { role: 'user', content: chatInput },
     ];
 
-    // Salvar mensagem do usuário
     await addMessage(phone, 'user', chatInput);
 
-    // Loop de chamadas OpenAI com tool calls
-    let response = await callOpenAIWithTimeout(messages);
-    let choice = response.choices[0]?.message;
+    let response = await callClaudeWithTimeout(systemPrompt, messages);
 
-    while (choice?.tool_calls && choice.tool_calls.length > 0) {
-      // Adicionar resposta do assistant com tool_calls
-      messages.push(choice as ChatCompletionMessageParam);
+    while (response.stop_reason === 'tool_use') {
+      const toolUseBlocks = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
+      );
 
-      // Executar cada tool
-      for (const toolCall of choice.tool_calls) {
-        if (toolCall.type !== 'function') continue;
-        const fn = toolCall.function;
-        const args = JSON.parse(fn.arguments);
-        const result = await executeTool(fn.name, args, phone);
+      messages.push({ role: 'assistant', content: response.content });
+
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+      for (const toolBlock of toolUseBlocks) {
+        const args = toolBlock.input as Record<string, string>;
+        const result = await executeTool(toolBlock.name, args, phone);
 
         await logEvent('tool_called', phone, {
-          tool: fn.name,
+          tool: toolBlock.name,
           args,
           result: result.substring(0, 500),
         });
         incrementMetric('toolCalls');
 
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolBlock.id,
           content: result,
         });
       }
 
-      // Verificar timeout
+      messages.push({ role: 'user', content: toolResults });
+
       if (Date.now() - startTime > TIMEOUT_MS) {
         await uazapi.sendText(phone, TIMEOUT_MESSAGE);
         logger.warn('Timeout no engine', { phone, elapsed: Date.now() - startTime });
         return;
       }
 
-      // Re-chamar OpenAI
-      response = await callOpenAIWithTimeout(messages);
-      choice = response.choices[0]?.message;
+      response = await callClaudeWithTimeout(systemPrompt, messages);
     }
 
-    // Extrair texto final
-    let text = choice?.content || '';
+    const textBlock = response.content.find(
+      (block): block is Anthropic.TextBlock => block.type === 'text',
+    );
+    let text = textBlock?.text || '';
     text = text.replace(/\n{2,}/g, '\n');
 
     if (!text) {
-      logger.warn('Resposta vazia da OpenAI', { phone });
+      logger.warn('Resposta vazia do Claude', { phone });
       return;
     }
 
-    // Salvar conversa ANTES de enviar (não perder se envio falhar)
     await addMessage(phone, 'assistant', text);
     await updateLeadIaMessage(phone);
 
@@ -115,12 +111,10 @@ export async function processConversation(phone: string, chatInput: string): Pro
     incrementMetric('totalResponseTimeMs', latency);
     incrementMetric('responseCount');
 
-    // Espelhar no Chatwoot
     syncOutgoingMessage(phone, text).catch((err) =>
       logger.warn('Chatwoot sync outgoing falhou', { phone, error: err }),
     );
 
-    // Enviar via UAZAPI (separado do try principal)
     try {
       await uazapi.sendText(phone, text);
       logger.info('Resposta enviada', { phone, latency_ms: latency });
@@ -143,12 +137,17 @@ export async function processConversation(phone: string, chatInput: string): Pro
   }
 }
 
-async function callOpenAIWithTimeout(messages: ChatCompletionMessageParam[]) {
-  return openai.chat.completions.create({
-    model: env.OPENAI_MODEL,
-    temperature: 0.3,
+async function callClaudeWithTimeout(
+  systemPrompt: string,
+  messages: Anthropic.MessageParam[],
+): Promise<Anthropic.Message> {
+  return anthropic.messages.create({
+    model: env.ANTHROPIC_MODEL,
+    max_tokens: 1024,
+    system: systemPrompt,
     messages,
     tools: TOOLS,
+    temperature: 0.3,
   });
 }
 
@@ -194,7 +193,6 @@ async function execCadastraLead(args: Record<string, string>, phone: string): Pr
     const status = args.agendado === 'true' ? 'agendado' : 'cadastrado';
     logger.info(`Lead ${status}`, { phone, nome: args.nome_completo });
 
-    // Sync com RD Station (assíncrono, não bloqueia a resposta)
     const lead = await findLeadByPhone(phone);
     if (lead) {
       if (args.agendado === 'true') {
