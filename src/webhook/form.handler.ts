@@ -8,6 +8,7 @@ import { generateFirstMessage } from '../conversation/first-message';
 import { syncLeadCreated } from '../crm/sync';
 import { syncOutgoingMessage } from '../chatwoot/sync';
 import { incrementMetric } from '../monitoring/metrics';
+import { notifyNewLead } from '../monitoring/alerts';
 
 // Mapeamento flexível de campos — Meta Lead Ads pode usar vários formatos
 const NAME_FIELDS = ['nome', 'name', 'full_name', 'nome_completo', 'first_name'];
@@ -64,6 +65,8 @@ export async function formHandler(req: Request, res: Response): Promise<void> {
       lead = await createLead(phone, nome, 'meta_form');
       logger.info('Lead criado via formulário', { phone, nome, email });
       await logEvent('lead_created', phone, { source: 'meta_form' });
+
+      notifyNewLead(phone, nome, 'meta_form').catch(() => {});
     } else if (nome) {
       await updateLeadName(phone, nome);
     }

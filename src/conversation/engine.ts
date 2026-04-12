@@ -14,6 +14,7 @@ import { createEvent, deleteEvent, updateEvent, findEventByLeadName, listEvents 
 import { syncLeadCreated, syncLeadScheduled } from '../crm/sync';
 import { incrementMetric, trackToolCall, trackAiLatency } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
+import { notifyProblem, notifyLeadScheduled } from '../monitoring/alerts';
 
 const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
@@ -61,6 +62,7 @@ export async function processConversation(phone: string, chatInput: string): Pro
       incrementMetric('errors');
       await addMessage(phone, 'assistant', FALLBACK_MESSAGE);
       await uazapi.sendText(phone, FALLBACK_MESSAGE);
+      notifyProblem('Claude API falhou — fallback enviado ao lead', { phone, erro: String(aiError).substring(0, 200) }).catch(() => {});
       return;
     }
 
@@ -107,6 +109,7 @@ export async function processConversation(phone: string, chatInput: string): Pro
         incrementMetric('errors');
         await addMessage(phone, 'assistant', FALLBACK_MESSAGE);
         await uazapi.sendText(phone, FALLBACK_MESSAGE);
+        notifyProblem('Claude API falhou no loop de tools', { phone, erro: String(aiError).substring(0, 200) }).catch(() => {});
         return;
       }
     }
@@ -284,6 +287,10 @@ async function execRegistraAgendamento(args: Record<string, string>, phone: stri
     });
 
     const meetInfo = event.meetLink ? `\nLink do Google Meet: ${event.meetLink}` : '';
+
+    // Notificar Gabriel sobre agendamento
+    notifyLeadScheduled(phone, nome_lead, `${data} às ${horario}`).catch(() => {});
+
     return `Agendamento confirmado para ${nome_lead} em ${data} às ${horario}.${meetInfo}\nID do evento: ${event.id}`;
   } catch (error) {
     logger.error('Erro ao registrar agendamento', { phone, error });

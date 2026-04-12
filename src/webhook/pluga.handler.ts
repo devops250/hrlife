@@ -8,6 +8,7 @@ import { generateFirstMessage } from '../conversation/first-message';
 import { syncLeadCreated } from '../crm/sync';
 import { incrementMetric } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
+import { notifyNewLead } from '../monitoring/alerts';
 
 // Mapeamento flexível de campos que a Pluga pode enviar
 const NAME_FIELDS = ['nome', 'name', 'full_name', 'nome_completo'];
@@ -58,6 +59,7 @@ export async function plugaHandler(req: Request, res: Response): Promise<void> {
     if (!lead) {
       lead = await createLead(phone, nome, 'meta_form');
       logger.info('Lead criado via Pluga', { phone, nome, email });
+      notifyNewLead(phone, nome, 'pluga').catch(() => {});
       await logEvent('lead_created', phone, { source: 'pluga' });
     } else if (nome) {
       await updateLeadName(phone, nome);

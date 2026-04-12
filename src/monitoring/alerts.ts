@@ -156,6 +156,101 @@ ${errorsToday > 0 ? '⚠️ Atenção: houve erros hoje. Verificar logs.' : '✅
   }
 }
 
+/**
+ * Notificação instantânea: novo lead entrou no sistema
+ */
+export async function notifyNewLead(phone: string, name: string, source: string): Promise<void> {
+  try {
+    const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const sourceLabel = source === 'meta_form' ? 'Meta Ads' : source === 'pluga' ? 'Pluga' : 'WhatsApp direto';
+
+    const message = `📥 Novo Lead — HR Life SDR
+
+👤 ${name || 'Sem nome'}
+📱 ${phone}
+📍 Fonte: ${sourceLabel}
+🕐 ${now}
+
+A Helena já iniciou o atendimento.`;
+
+    const numbers = env.ALERT_WHATSAPP_NUMBERS.split(',').filter(Boolean);
+    for (const number of numbers) {
+      try {
+        await uazapi.sendText(number.trim(), message);
+      } catch (error) {
+        logger.error('Falha ao notificar novo lead', { number, error });
+      }
+    }
+
+    logger.info('Notificação de novo lead enviada', { phone, name, source });
+  } catch (error) {
+    logger.warn('Erro ao notificar novo lead (não bloqueia)', { phone, error });
+  }
+}
+
+/**
+ * Notificação instantânea: problema detectado em tempo real
+ */
+export async function notifyProblem(description: string, details?: Record<string, unknown>): Promise<void> {
+  try {
+    const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+    let message = `🚨 Problema Detectado — HR Life SDR\n\n${description}\n\n🕐 ${now}`;
+
+    if (details) {
+      const extra = Object.entries(details)
+        .map(([k, v]) => `• ${k}: ${v}`)
+        .join('\n');
+      message += `\n\nDetalhes:\n${extra}`;
+    }
+
+    const numbers = env.ALERT_WHATSAPP_NUMBERS.split(',').filter(Boolean);
+    for (const number of numbers) {
+      try {
+        await uazapi.sendText(number.trim(), message);
+      } catch (error) {
+        logger.error('Falha ao notificar problema', { number, error });
+      }
+    }
+
+    await logEvent('problem_notified', undefined, { description, ...details });
+    logger.warn('Notificação de problema enviada', { description });
+  } catch (error) {
+    logger.error('Erro ao notificar problema', { error });
+  }
+}
+
+/**
+ * Notificação: lead agendou reunião
+ */
+export async function notifyLeadScheduled(phone: string, name: string, dateTime: string): Promise<void> {
+  try {
+    const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+    const message = `📅 Agendamento Confirmado — HR Life SDR
+
+👤 ${name}
+📱 ${phone}
+🗓️ ${dateTime}
+🕐 Registrado: ${now}
+
+O lead já recebeu confirmação com link do Google Meet.`;
+
+    const numbers = env.ALERT_WHATSAPP_NUMBERS.split(',').filter(Boolean);
+    for (const number of numbers) {
+      try {
+        await uazapi.sendText(number.trim(), message);
+      } catch (error) {
+        logger.error('Falha ao notificar agendamento', { number, error });
+      }
+    }
+
+    logger.info('Notificação de agendamento enviada', { phone, name, dateTime });
+  } catch (error) {
+    logger.warn('Erro ao notificar agendamento (não bloqueia)', { phone, error });
+  }
+}
+
 export function startAlertScheduler(): void {
   // Check a cada 2 minutos
   cron.schedule('*/2 * * * *', () => {

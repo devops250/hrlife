@@ -9,6 +9,7 @@ import { addToBuffer } from '../conversation/message-buffer';
 import { incrementMetric } from '../monitoring/metrics';
 import { syncIncomingMessage } from '../chatwoot/sync';
 import { syncLeadBasic } from '../crm/sync';
+import { notifyNewLead } from '../monitoring/alerts';
 
 const POSITIVE_REACTIONS = ['👍', '🥳', '❤️', '✅', '❤', '😄', '💪'];
 const NEGATIVE_REACTIONS = ['👎', '❌'];
@@ -105,6 +106,10 @@ export async function whatsappHandler(req: Request, res: Response): Promise<void
       isNewLead = true;
       logger.info('Novo lead criado', { phone });
       await logEvent('lead_created', phone, { source: 'whatsapp' });
+
+      // Notificar Gabriel via WhatsApp
+      notifyNewLead(phone, '', 'whatsapp').catch(() => {});
+
     }
 
     // Sync básico com RD Station (assíncrono, não bloqueia)

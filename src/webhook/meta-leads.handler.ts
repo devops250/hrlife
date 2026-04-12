@@ -8,6 +8,7 @@ import { generateFirstMessage } from '../conversation/first-message';
 import { syncLeadCreated } from '../crm/sync';
 import { incrementMetric } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
+import { notifyNewLead } from '../monitoring/alerts';
 
 const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || '';
 const META_VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'hrlife-sdr-verify-2026';
@@ -152,6 +153,8 @@ async function processMetaLead(leadgenId: string): Promise<void> {
       lead = await createLead(phone, nome, 'meta_form');
       logger.info('Lead criado via Meta Lead Ads', { phone, nome, leadgenId });
       await logEvent('lead_created', phone, { source: 'meta_lead', leadgenId });
+
+      notifyNewLead(phone, nome, 'meta_form').catch(() => {});
     } else if (nome) {
       await updateLeadName(phone, nome);
     }
