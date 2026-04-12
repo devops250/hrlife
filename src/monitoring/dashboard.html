@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR Life SDR — Painel de Métricas</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--surface:#1a1d27;--card:#222638;--border:#2d3148;--text:#e4e6f0;--muted:#8b8fa3;--accent:#2dd4bf;--accent2:#3b82f6;--red:#ef4444;--amber:#f59e0b;--green:#22c55e}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.container{max-width:1100px;margin:0 auto;padding:24px 16px}
+header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:32px}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff}
+.logo h1{font-size:20px;font-weight:700;letter-spacing:-0.5px}
+.logo span{display:block;font-size:12px;color:var(--muted);font-weight:400;letter-spacing:0}
+.period-selector{display:flex;gap:4px;background:var(--surface);border-radius:10px;padding:4px;border:1px solid var(--border)}
+.period-btn{padding:8px 16px;border:none;background:none;color:var(--muted);border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;transition:all .2s}
+.period-btn.active{background:var(--accent);color:#0f1117;font-weight:600}
+.period-btn:hover:not(.active){color:var(--text)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 24px;transition:border-color .2s}
+.card:hover{border-color:var(--accent)}
+.card-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.card-value{font-size:32px;font-weight:700;letter-spacing:-1px;line-height:1.1}
+.card-sub{font-size:13px;color:var(--muted);margin-top:6px}
+.accent{color:var(--accent)}
+.blue{color:var(--accent2)}
+.amber{color:var(--amber)}
+.green{color:var(--green)}
+.section{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:24px}
+.section-title{font-size:14px;font-weight:600;margin-bottom:16px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.bar-chart{display:flex;flex-direction:column;gap:12px}
+.bar-row{display:flex;align-items:center;gap:12px}
+.bar-label{min-width:100px;font-size:14px;font-weight:500;text-align:right}
+.bar-track{flex:1;height:32px;background:var(--surface);border-radius:8px;overflow:hidden;position:relative}
+.bar-fill{height:100%;border-radius:8px;display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:600;color:#fff;transition:width .6s ease}
+.bar-fill.wa{background:linear-gradient(90deg,#25d366,#128c7e)}
+.bar-fill.meta{background:linear-gradient(90deg,var(--accent2),#6366f1)}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.status-item{text-align:center;padding:14px;background:var(--surface);border-radius:10px}
+.status-item .num{font-size:24px;font-weight:700}
+.status-item .lbl{font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+footer{text-align:center;padding:24px 0;color:var(--muted);font-size:12px}
+.loading{display:flex;align-items:center;justify-content:center;height:200px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease infinite;margin:0 4px}
+.dot:nth-child(2){animation-delay:.2s}
+.dot:nth-child(3){animation-delay:.4s}
+@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+@media(max-width:600px){
+  header{flex-direction:column;align-items:flex-start}
+  .card-value{font-size:26px}
+  .grid{grid-template-columns:1fr 1fr}
+  .bar-label{min-width:70px;font-size:12px}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">H</div>
+      <h1>HR Life SDR<span>Painel de Métricas</span></h1>
+    </div>
+    <div class="period-selector">
+      <button class="period-btn" data-period="today">Hoje</button>
+      <button class="period-btn active" data-period="7d">7 dias</button>
+      <button class="period-btn" data-period="30d">30 dias</button>
+    </div>
+  </header>
+
+  <div id="content">
+    <div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  </div>
+
+  <footer>HR Life — Proteção Familiar e Financeira · Powered by Cognita AI</footer>
+</div>
+
+<script>
+let currentPeriod = '7d';
+
+function periodLabel(p) {
+  return { today: 'hoje', '7d': 'nos últimos 7 dias', '30d': 'nos últimos 30 dias' }[p] || p;
+}
+
+function formatHours(h) {
+  if (!h || h === 0) return '—';
+  if (h < 1) return Math.round(h * 60) + ' min';
+  return h.toFixed(1) + 'h';
+}
+
+function sourceLabel(s) {
+  return { whatsapp: 'WhatsApp Direto', meta_form: 'Anúncios Meta', pluga: 'Anúncios Meta' }[s] || s;
+}
+
+function render(d) {
+  const sources = Object.entries(d.top_sources || {});
+  const maxSource = Math.max(...sources.map(([,v]) => v), 1);
+
+  document.getElementById('content').innerHTML = `
+    <div class="grid">
+      <div class="card">
+        <div class="card-label">Total de Leads</div>
+        <div class="card-value">${d.leads_total}</div>
+        <div class="card-sub">${periodLabel(d.period)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Agendados</div>
+        <div class="card-value green">${d.leads_scheduled}</div>
+        <div class="card-sub">apresentações marcadas</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Taxa de Conversão</div>
+        <div class="card-value accent">${d.conversion_rate}</div>
+        <div class="card-sub">lead → agendamento</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Follow-ups Enviados</div>
+        <div class="card-value amber">${d.followups_sent}</div>
+        <div class="card-sub">mensagens automáticas</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Status dos Leads</div>
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="num blue">${d.leads_active}</div>
+          <div class="lbl">Ativos</div>
+        </div>
+        <div class="status-item">
+          <div class="num green">${d.leads_scheduled}</div>
+          <div class="lbl">Agendados</div>
+        </div>
+        <div class="status-item">
+          <div class="num amber">${d.leads_paused}</div>
+          <div class="lbl">Pausados</div>
+        </div>
+        <div class="status-item">
+          <div class="num" style="color:var(--red)">${d.leads_exhausted}</div>
+          <div class="lbl">Sem Retorno</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="section">
+        <div class="section-title">Fontes de Leads</div>
+        <div class="bar-chart">
+          ${sources.map(([k, v]) => `
+            <div class="bar-row">
+              <div class="bar-label">${sourceLabel(k)}</div>
+              <div class="bar-track">
+                <div class="bar-fill ${k === 'whatsapp' ? 'wa' : 'meta'}" style="width:${Math.max((v / maxSource) * 100, 8)}%">${v}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Tempo Médio até Agendamento</div>
+        <div style="display:flex;align-items:center;justify-content:center;height:80px">
+          <div class="card-value accent">${formatHours(d.avg_time_to_schedule_hours)}</div>
+        </div>
+        <div class="card-sub" style="text-align:center;margin-top:8px">da primeira mensagem ao agendamento</div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadData(period) {
+  currentPeriod = period;
+  document.querySelectorAll('.period-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.period === period);
+  });
+  document.getElementById('content').innerHTML = '<div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+  try {
+    const res = await fetch('/dashboard/api?period=' + period);
+    const data = await res.json();
+    render(data);
+  } catch (e) {
+    document.getElementById('content').innerHTML = '<div class="loading" style="color:var(--red)">Erro ao carregar dados</div>';
+  }
+}
+
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => loadData(btn.dataset.period));
+});
+
+loadData('7d');
+</script>
+</body>
+</html>

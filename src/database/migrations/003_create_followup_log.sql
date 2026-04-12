@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS followup_log (
+  id      SERIAL PRIMARY KEY,
+  phone   VARCHAR(20) NOT NULL,
+  stage   INT NOT NULL,
+  message TEXT NOT NULL,
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  success BOOLEAN DEFAULT TRUE
+);
