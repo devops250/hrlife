@@ -130,8 +130,18 @@ async function execRegistraAgendamento(args: Record<string, string>, phone: stri
       b.start.getTime() < slotEnd.getTime() && b.end.getTime() > slotStart.getTime(),
     );
     if (conflict) {
-      logger.warn('Slot ocupado no momento do registro', { phone, data, horario });
-      return `ERRO: O horário ${horario} do dia ${data} já está ocupado. NÃO confirme agendamento ao lead. Chame consulta_horario novamente para oferecer horários atualizados.`;
+      logger.warn('Slot ocupado no momento do registro, buscando alternativos', { phone, data, horario });
+
+      // Buscar horários alternativos automaticamente
+      const hour = parseInt(horario.split(':')[0], 10);
+      const autoPeriod = hour < 12 ? 'manha' : hour < 18 ? 'tarde' : 'noite';
+      const altSlots = await getNextAvailableSlots(autoPeriod as 'manha' | 'tarde' | 'noite', 3);
+
+      if (altSlots.length > 0) {
+        const formatted = altSlots.map((s, i) => `${i + 1}. ${s.formatted}`).join('\n');
+        return `O horário ${horario} do dia ${data} não está mais disponível. Horários atualizados:\n${formatted}\n\nApresente ESTES horários ao lead e peça para escolher. NÃO diga que o agendamento foi confirmado.`;
+      }
+      return `O horário ${horario} do dia ${data} não está mais disponível e não há outros horários nesse período. Sugira outro período ao lead. NÃO diga que o agendamento foi confirmado.`;
     }
 
     const event = await createEvent({
