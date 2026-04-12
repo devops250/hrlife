@@ -8,8 +8,9 @@ import { uazapi } from '../whatsapp/uazapi.client';
 import { addToBuffer } from '../conversation/message-buffer';
 import { incrementMetric } from '../monitoring/metrics';
 import { syncIncomingMessage } from '../chatwoot/sync';
+import { syncLeadBasic } from '../crm/sync';
 
-const POSITIVE_REACTIONS = ['👍', '🔥', '❤️', '✅', '❤', '🙏', '💪'];
+const POSITIVE_REACTIONS = ['👍', '🥳', '❤️', '✅', '❤', '😄', '💪'];
 const NEGATIVE_REACTIONS = ['👎', '❌'];
 
 function convertReaction(emoji: string): string {
@@ -98,10 +99,19 @@ export async function whatsappHandler(req: Request, res: Response): Promise<void
 
     // Buscar ou criar lead
     let lead = await findLeadByPhone(phone);
+    let isNewLead = false;
     if (!lead) {
       lead = await createLead(phone);
+      isNewLead = true;
       logger.info('Novo lead criado', { phone });
       await logEvent('lead_created', phone, { source: 'whatsapp' });
+    }
+
+    // Sync básico com RD Station (assíncrono, não bloqueia)
+    if (isNewLead || !lead.rd_contact_id) {
+      syncLeadBasic(phone).catch((err) =>
+        logger.warn('Sync básico RD falhou (não bloqueia)', { phone, error: err }),
+      );
     }
 
     // Lead pausado — ignorar
