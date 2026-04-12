@@ -110,36 +110,106 @@ async function checkAndAlert(): Promise<void> {
   }
 }
 
+async function fetchRDFunnel(): Promise<Record<string, number>> {
+  const stages: Record<string, number> = {
+    'Contato feito': 0,
+    'Agendado pela IA': 0,
+    'Estudo Apresentado': 0,
+    'Proposta Enviada': 0,
+    'Convertido': 0,
+    'Sem Retorno': 0,
+  };
+
+  try {
+    const rdToken = env.RDSTATION_API_TOKEN;
+    if (!rdToken) return stages;
+
+    const pipelineId = env.RD_PIPELINE_ID;
+    const stageIds: Record<string, string> = {
+      [env.RD_STAGE_CONTATO_FEITO]: 'Contato feito',
+      [env.RD_STAGE_AGENDADO]: 'Agendado pela IA',
+      [env.RD_STAGE_ESTUDO_APRESENTADO]: 'Estudo Apresentado',
+      [env.RD_STAGE_PROPOSTA_ENVIADA]: 'Proposta Enviada',
+      [env.RD_STAGE_CONVERTIDO]: 'Convertido',
+      [env.RD_STAGE_SEM_RETORNO]: 'Sem Retorno',
+    };
+
+    // Buscar deals do pipeline
+    const res = await fetch(
+      `https://crm.rdstation.com/api/v1/deals?token=${rdToken}&deal_pipeline_id=${pipelineId}&limit=200`,
+    );
+    if (!res.ok) {
+      logger.warn('Falha ao buscar funil RD', { status: res.status });
+      return stages;
+    }
+
+    const data = await res.json() as { deals: Array<{ deal_stage: { _id: string } }> };
+    for (const deal of data.deals || []) {
+      const stageId = deal.deal_stage?._id;
+      const stageName = stageIds[stageId];
+      if (stageName) stages[stageName]++;
+    }
+  } catch (error) {
+    logger.warn('Erro ao buscar funil RD (continuando)', { error });
+  }
+
+  return stages;
+}
+
 async function sendDailySummary(): Promise<void> {
   try {
     const pgOk = await testConnection();
     if (!pgOk) return;
 
-    const [leadsResult, scheduledResult, followupsResult, errorsResult] = await Promise.all([
+    const [leadsResult, scheduledResult, followupsResult, errorsResult, totalResult, conversionResult] = await Promise.all([
       query("SELECT COUNT(*) as count FROM leads WHERE created_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'"),
       query("SELECT COUNT(*) as count FROM leads WHERE scheduled = true AND updated_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'"),
       query("SELECT COUNT(*) as count FROM followup_log WHERE sent_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'"),
       query("SELECT COUNT(*) as count FROM events WHERE type = 'error' AND created_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'"),
+      query("SELECT COUNT(*) as total, COUNT(rd_contact_id) as synced FROM leads"),
+      query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE scheduled = true) as scheduled FROM leads WHERE created_at >= NOW() - INTERVAL '7 days'"),
     ]);
 
     const leadsToday = parseInt(leadsResult.rows[0]?.count || '0', 10);
     const scheduledToday = parseInt(scheduledResult.rows[0]?.count || '0', 10);
     const followupsToday = parseInt(followupsResult.rows[0]?.count || '0', 10);
     const errorsToday = parseInt(errorsResult.rows[0]?.count || '0', 10);
+    const totalLeads = parseInt(totalResult.rows[0]?.total || '0', 10);
+    const syncedLeads = parseInt(totalResult.rows[0]?.synced || '0', 10);
+    const week7Total = parseInt(conversionResult.rows[0]?.total || '0', 10);
+    const week7Scheduled = parseInt(conversionResult.rows[0]?.scheduled || '0', 10);
+    const conversionRate = week7Total > 0 ? ((week7Scheduled / week7Total) * 100).toFixed(1) : '0.0';
     const summary = getMetricsSummary();
+
+    // Buscar funil do RD Station
+    const funnel = await fetchRDFunnel();
+
+    const funnelTotal = Object.values(funnel).reduce((a, b) => a + b, 0);
 
     const message = `📊 Resumo Diário — HR Life SDR (Helena IA)
 
-📥 Leads novos: ${leadsToday}
-📅 Agendamentos: ${scheduledToday}
-🤖 Respostas IA: ${summary.ai_responses}
-🔧 Tool calls: ${summary.tool_calls}
-📤 Follow-ups: ${followupsToday}
-❌ Erros: ${errorsToday}
-⏱️ Latência média IA: ${summary.avg_ai_latency_ms}ms
-🧠 Modelo: ${summary.ai_model}
+📈 HOJE
+├ 📥 Leads novos: ${leadsToday}
+├ 📅 Agendamentos: ${scheduledToday}
+├ 🤖 Respostas IA: ${summary.ai_responses}
+├ 📤 Follow-ups: ${followupsToday}
+├ ❌ Erros: ${errorsToday}
+└ ⏱️ Latência IA: ${summary.avg_ai_latency_ms}ms
 
-${errorsToday > 0 ? '⚠️ Atenção: houve erros hoje. Verificar logs.' : '✅ Sem erros hoje.'}`;
+📊 FUNIL RD STATION (${funnelTotal} deals)
+├ 📞 Contato feito: ${funnel['Contato feito']}
+├ 📅 Agendado pela IA: ${funnel['Agendado pela IA']}
+├ 📋 Estudo Apresentado: ${funnel['Estudo Apresentado']}
+├ 📄 Proposta Enviada: ${funnel['Proposta Enviada']}
+├ ✅ Convertido: ${funnel['Convertido']}
+└ ❌ Sem Retorno: ${funnel['Sem Retorno']}
+
+📉 MÉTRICAS GERAIS
+├ Total leads: ${totalLeads} (${syncedLeads} no CRM)
+├ Conversão 7 dias: ${conversionRate}% (${week7Scheduled}/${week7Total})
+└ 🧠 Modelo: ${summary.ai_model}
+
+${errorsToday > 0 ? '⚠️ Atenção: houve erros hoje.' : '✅ Dia sem erros.'}`;
 
     const numbers = env.ALERT_WHATSAPP_NUMBERS.split(',').filter(Boolean);
     for (const number of numbers) {
@@ -150,7 +220,7 @@ ${errorsToday > 0 ? '⚠️ Atenção: houve erros hoje. Verificar logs.' : '✅
       }
     }
 
-    logger.info('Resumo diário enviado', { leadsToday, scheduledToday, followupsToday, errorsToday });
+    logger.info('Resumo diário enviado', { leadsToday, scheduledToday, funnel, funnelTotal });
   } catch (error) {
     logger.error('Erro ao gerar resumo diário', { error });
   }
