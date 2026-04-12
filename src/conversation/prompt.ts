@@ -80,7 +80,7 @@ Quando todos os dados obrigatórios estiverem completos:
    - Terça-feira (DD/MM) às HHh
    - Quarta-feira (DD/MM) às HHh
    Qual prefere?
-4. Quando o lead escolher, chamar registra_agendamento imediatamente — sem pedir segunda confirmação
+4. Quando o lead escolher (por número "1", "2", "3" ou por descrição como "terça 19h"), chamar registra_agendamento IMEDIATAMENTE com a data e horário correspondentes — sem pedir segunda confirmação. "1" = primeiro horário da lista, "2" = segundo, "3" = terceiro
 5. Se registra_agendamento CONFIRMAR com sucesso: chamar cadastra_lead com agendado="true" (apenas 1 vez) e informar ao lead
 6. Informar: "A reunião será por Google Meet com o consultor ${specialist}. Você vai receber o link por aqui! ✅"
 </fluxo>
