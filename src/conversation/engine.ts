@@ -10,7 +10,7 @@ import { uazapi, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
 import { query } from '../database/client';
 import { getSaoPauloNow } from '../config/schedule';
 import { getNextAvailableSlots } from '../scheduling/availability';
-import { createEvent, deleteEvent, updateEvent, findEventByLeadName } from '../scheduling/calendar.service';
+import { createEvent, deleteEvent, updateEvent, findEventByLeadName, listEvents } from '../scheduling/calendar.service';
 import { syncLeadCreated, syncLeadScheduled } from '../crm/sync';
 import { incrementMetric, trackToolCall, trackAiLatency } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
@@ -256,6 +256,20 @@ async function execRegistraAgendamento(args: Record<string, string>, phone: stri
     const startDateTime = `${data}T${horario}:00`;
     const endHour = parseInt(horario.split(':')[0], 10) + 1;
     const endDateTime = `${data}T${String(endHour).padStart(2, '0')}:${horario.split(':')[1]}:00`;
+
+    // Double-check: verificar se o slot ainda está disponível antes de criar
+    const slotStart = new Date(`${data}T${horario}:00-03:00`);
+    const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
+    const checkStart = new Date(slotStart.getTime() - 60 * 60 * 1000);
+    const checkEnd = new Date(slotEnd.getTime() + 60 * 60 * 1000);
+    const existingEvents = await listEvents(checkStart, checkEnd);
+    const conflict = existingEvents.find((e) =>
+      e.start.getTime() < slotEnd.getTime() && e.end.getTime() > slotStart.getTime(),
+    );
+    if (conflict) {
+      logger.warn('Slot ocupado no momento do registro', { phone, data, horario, conflict: conflict.summary });
+      return `O horário ${horario} do dia ${data} acabou de ser ocupado. Por favor, chame consulta_horario novamente para oferecer horários atualizados ao lead.`;
+    }
 
     const event = await createEvent({
       summary: `HR Life - ${nome_lead}`,

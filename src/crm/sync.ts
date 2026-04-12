@@ -277,40 +277,73 @@ export async function syncLeadScheduled(lead: Lead): Promise<void> {
  */
 import { convertBirthdayToISO } from '../utils/date';
 
+// IDs dos campos customizados do RD Station CRM (mapeados do contato real)
+const RD_CUSTOM_FIELDS = {
+  data_nascimento: '69bb4655626559001e2972b4',
+  altura: '69bddd471c94960018bc1e3b',
+  peso: '69bddd58fb02050016cc04c0',
+  profissao: '69c2fe8d92aa8d001fd8313e',
+  renda_mensal: '69bddc67d1fc640019a59ba9',
+  fumante: '69bc628005b2d80026edfa48',
+  cpf: '69bd76d25047c3001da71f9f',
+  filhos: '69bb46a542ab9c00191305f8',
+};
+
 /**
- * Atualizar contato no RD Station — best-effort, não bloqueia o fluxo
+ * Monta array de custom fields para enviar ao RD Station
  */
-function buildLeadNotes(lead: Lead): string {
-  const lines: string[] = ['🔒 Dados de Cotação (coletados pela Helena)', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'];
-  if (lead.birth_date) lines.push(`Nascimento: ${lead.birth_date}`);
-  if (lead.height) lines.push(`Altura: ${lead.height}`);
-  if (lead.weight) lines.push(`Peso: ${lead.weight}`);
-  if (lead.profession) lines.push(`Profissão: ${lead.profession}`);
-  if (lead.smoker) lines.push(`Fumante: ${lead.smoker}`);
-  if (lead.income) lines.push(`Renda: ${lead.income}`);
-  if (lead.cpf) lines.push(`CPF: ${lead.cpf}`);
-  if (lead.scheduled && lead.scheduled_at) {
-    const dt = new Date(lead.scheduled_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-    lines.push(`Agendado: ${dt}`);
+function buildCustomFields(lead: Lead): Array<{ custom_field_id: string; value: string | string[] }> {
+  const fields: Array<{ custom_field_id: string; value: string | string[] }> = [];
+
+  if (lead.birth_date) {
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.data_nascimento, value: lead.birth_date });
   }
-  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  lines.push(`Atualizado em: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
-  return lines.join('\n');
+  if (lead.height) {
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.altura, value: lead.height });
+  }
+  if (lead.weight) {
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.peso, value: lead.weight });
+  }
+  if (lead.profession) {
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.profissao, value: lead.profession });
+  }
+  if (lead.income) {
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.renda_mensal, value: lead.income });
+  }
+  if (lead.smoker) {
+    const smokerValue = lead.smoker.toLowerCase().includes('sim') ? ['Sim'] : ['Não'];
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.fumante, value: smokerValue });
+  }
+  if (lead.cpf) {
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.cpf, value: lead.cpf });
+  }
+
+  return fields;
 }
 
+/**
+ * Atualizar contato no RD Station — best-effort, não bloqueia o fluxo.
+ * Preenche campos customizados individualmente + notas como backup.
+ */
 async function safeUpdateContact(contactId: string, lead: Lead): Promise<void> {
   try {
     const data: Record<string, unknown> = {};
     if (lead.name) data.name = lead.name;
 
-    const hasData = lead.birth_date || lead.height || lead.weight || lead.profession || lead.smoker || lead.income || lead.cpf;
-    if (hasData) {
-      data.notes = buildLeadNotes(lead);
+    // Preencher campos customizados individualmente
+    const customFields = buildCustomFields(lead);
+    if (customFields.length > 0) {
+      data.contact_custom_fields = customFields;
     }
 
     if (Object.keys(data).length === 0) return;
 
     await updateContact(contactId, data);
+
+    await logEvent('crm_sync', lead.phone, {
+      action: 'custom_fields_updated',
+      fieldsCount: customFields.length,
+    });
   } catch (error) {
     logger.warn('updateContact falhou (best-effort, continuando)', { contactId, error });
     await logEvent('crm_sync', lead.phone, {

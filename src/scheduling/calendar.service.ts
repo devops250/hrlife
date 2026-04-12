@@ -22,13 +22,16 @@ export async function listEvents(startDate: Date, endDate: Date): Promise<Calend
         orderBy: 'startTime',
       });
 
-      return (res.data.items || []).map((item) => ({
-        id: item.id || '',
-        summary: item.summary || '',
-        start: new Date(item.start?.dateTime || item.start?.date || ''),
-        end: new Date(item.end?.dateTime || item.end?.date || ''),
-        meetLink: item.hangoutLink || undefined,
-      }));
+      return (res.data.items || [])
+        .filter((item) => item.status !== 'cancelled')
+        .map((item) => ({
+          id: item.id || '',
+          summary: item.summary || '',
+          start: new Date(item.start?.dateTime || item.start?.date || ''),
+          end: new Date(item.end?.dateTime || item.end?.date || ''),
+          meetLink: item.hangoutLink || undefined,
+          status: item.status || 'confirmed',
+        }));
     },
     { label: 'calendar.listEvents' },
   );
@@ -67,6 +70,7 @@ export async function createEvent(params: CreateEventParams): Promise<CalendarEv
         start: new Date(res.data.start?.dateTime || ''),
         end: new Date(res.data.end?.dateTime || ''),
         meetLink: res.data.hangoutLink || undefined,
+        status: res.data.status || 'confirmed',
       };
 
       logger.info('Evento criado no Google Calendar', {
@@ -121,6 +125,7 @@ export async function updateEvent(eventId: string, params: UpdateEventParams): P
         start: new Date(res.data.start?.dateTime || ''),
         end: new Date(res.data.end?.dateTime || ''),
         meetLink: res.data.hangoutLink || undefined,
+        status: res.data.status || 'confirmed',
       };
 
       logger.info('Evento atualizado no Google Calendar', { eventId: event.id });

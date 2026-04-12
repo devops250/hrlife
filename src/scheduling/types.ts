@@ -4,6 +4,7 @@ export interface CalendarEvent {
   start: Date;
   end: Date;
   meetLink?: string;
+  status?: string; // confirmed, tentative, cancelled
 }
 
 export interface CreateEventParams {

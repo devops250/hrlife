@@ -15,9 +15,18 @@ export async function getNextAvailableSlots(
   const endDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   const events = await listEvents(now, endDate);
 
+  // Filtrar apenas eventos confirmados (excluir cancelados e recusados)
+  const confirmedEvents = events.filter((event) => {
+    // Eventos com status cancelado são descartados
+    if (event.status === 'cancelled') return false;
+    // Manter todos os outros (confirmed, tentative, sem status)
+    return true;
+  });
+
   logger.info('Buscando slots disponíveis', {
     period,
-    eventsFound: events.length,
+    eventsTotal: events.length,
+    eventsConfirmed: confirmedEvents.length,
   });
 
   // Iterar próximos 14 dias
@@ -46,16 +55,29 @@ export async function getNextAvailableSlots(
       const slotDate = new Date(date);
       slotDate.setHours(hours, minutes, 0, 0);
 
-      // Pular slots no passado (hoje)
-      if (dayOffset === 0 && slotDate <= now) continue;
+      // Pular slots no passado (hoje) — margem de 30 min
+      if (dayOffset === 0 && slotDate.getTime() <= now.getTime() + 30 * 60 * 1000) continue;
 
-      // Verificar se o slot está ocupado
-      const slotEnd = new Date(slotDate.getTime() + 60 * 60 * 1000); // +1h
-      const isOccupied = events.some((event) => {
-        return event.start < slotEnd && event.end > slotDate;
+      // Verificar se o slot está ocupado — usar timezone-aware comparison
+      const slotStart = slotDate.getTime();
+      const slotEnd = slotStart + 60 * 60 * 1000; // +1h
+
+      const isOccupied = confirmedEvents.some((event) => {
+        const eventStart = event.start.getTime();
+        const eventEnd = event.end.getTime();
+        // Overlap: evento começa antes do slot acabar E evento termina depois do slot começar
+        return eventStart < slotEnd && eventEnd > slotStart;
       });
 
-      if (isOccupied) continue;
+      if (isOccupied) {
+        logger.debug('Slot ocupado, pulando', {
+          slot: formatSlotPtBr(slotDate, time),
+          conflictingEvent: confirmedEvents.find((e) =>
+            e.start.getTime() < slotEnd && e.end.getTime() > slotStart,
+          )?.summary,
+        });
+        continue;
+      }
 
       slots.push({
         date: slotDate,
