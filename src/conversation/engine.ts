@@ -45,6 +45,12 @@ export async function processConversation(phone: string, chatInput: string): Pro
       return;
     }
 
+    // Validar que chatInput não está vazio (evitar erro 400 do Claude)
+    if (!chatInput || !chatInput.trim()) {
+      logger.warn('Mensagem vazia recebida, ignorando', { phone });
+      return;
+    }
+
     // Montar contexto
     const history = await getHistory(phone, 20);
     const now = getSaoPauloNow();
