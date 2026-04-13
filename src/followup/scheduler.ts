@@ -22,7 +22,7 @@ let isRunning = false;
 
 async function acquireLock(): Promise<boolean> {
   try {
-    const { redisClient } = await import('../index');
+    const { redisClient } = await import('../config/redis');
     const result = await redisClient.set('followup:lock', '1', { NX: true, EX: 290 });
     return result === 'OK';
   } catch {
@@ -32,7 +32,7 @@ async function acquireLock(): Promise<boolean> {
 
 async function releaseLock(): Promise<void> {
   try {
-    const { redisClient } = await import('../index');
+    const { redisClient } = await import('../config/redis');
     await redisClient.del('followup:lock');
   } catch { /* best effort */ }
 }
