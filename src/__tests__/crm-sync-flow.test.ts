@@ -210,16 +210,21 @@ describe('Fluxo 5: CRM Sync', () => {
     await vi.runAllTimersAsync();
     await promise;
 
-    // updateContact deve ter sido chamado com fumante=["Sim"], cpf com mascara e data ISO
-    expect(vi.mocked(updateContact)).toHaveBeenCalledWith(
-      'contact-cf',
-      expect.objectContaining({
-        contact_custom_fields: expect.arrayContaining([
-          expect.objectContaining({ value: ['Sim'] }), // fumante
-          expect.objectContaining({ value: '123.456.789-09' }), // cpf com mascara
-          expect.objectContaining({ value: '1985-01-01' }), // data ISO
-        ]),
-      }),
-    );
+    // Agora updateContact e chamado individualmente por campo
+    const calls = vi.mocked(updateContact).mock.calls;
+    const payloads = calls.map(c => c[1]);
+
+    // Nome enviado separado
+    expect(payloads).toContainEqual({ name: 'Joao Silva' });
+
+    // Cada campo customizado enviado individualmente
+    const cfValues = payloads
+      .filter(p => p.contact_custom_fields)
+      .map(p => (p.contact_custom_fields as Array<{ value: unknown }>)[0].value);
+
+    expect(cfValues).toContainEqual(['Sim']); // fumante
+    expect(cfValues).toContainEqual('123.456.789-09'); // cpf com mascara
+    expect(cfValues).toContainEqual('1985-01-01'); // data ISO
+    expect(cfValues).toContainEqual('SP'); // estado via DDD
   });
 });

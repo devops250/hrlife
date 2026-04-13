@@ -1,9 +1,9 @@
 import { findContactByPhone, findDealsByContact, createDeal, moveDealToStage, updateContact } from './rdstation.service';
 import { updateLeadData, type Lead } from '../database/leads.repo';
-import { logEvent } from '../database/events.repo';
+import { logEvent, logError } from '../database/events.repo';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
-import { buildCustomFields } from './sync-fields';
+import { buildCustomFields, RD_CUSTOM_FIELDS } from './sync-fields';
 
 /**
  * Busca o contact_id após criar um deal (aguarda 1s para o RD Station processar).
@@ -18,22 +18,57 @@ export async function resolveContactId(phone: string): Promise<string | null> {
   }
 }
 
+/** Mapa reverso: field_id → nome legível para logs */
+const FIELD_NAMES: Record<string, string> = Object.fromEntries(
+  Object.entries(RD_CUSTOM_FIELDS).map(([name, id]) => [id, name]),
+);
+
 /**
- * Atualiza contato no RD Station com dados de cotação — best-effort.
+ * Atualiza contato no RD Station — envia cada campo individualmente.
+ * Se um campo falha (ex: CPF inválido já armazenado), os outros continuam.
  */
 export async function safeUpdateContact(contactId: string, lead: Lead): Promise<void> {
-  try {
-    const data: Record<string, unknown> = {};
-    if (lead.name) data.name = lead.name;
-    const customFields = buildCustomFields(lead);
-    if (customFields.length > 0) data.contact_custom_fields = customFields;
-    if (Object.keys(data).length === 0) return;
-    await updateContact(contactId, data);
-    await logEvent('crm_sync', lead.phone, { action: 'custom_fields_updated', fieldsCount: customFields.length });
-  } catch (error) {
-    logger.warn('updateContact falhou (best-effort, continuando)', { contactId, error });
-    await logEvent('crm_sync', lead.phone, { action: 'update_contact_failed_best_effort', contactId, error: String(error) });
+  const fields = buildCustomFields(lead);
+  if (!lead.name && fields.length === 0) return;
+
+  let succeeded = 0;
+  let failed = 0;
+
+  // Enviar nome separado
+  if (lead.name) {
+    try {
+      await updateContact(contactId, { name: lead.name });
+      succeeded++;
+    } catch (err) {
+      failed++;
+      logger.warn('RD update name failed', { phone: lead.phone, error: err instanceof Error ? err.message : String(err) });
+    }
   }
+
+  // Enviar cada campo customizado individualmente
+  for (const field of fields) {
+    const fieldName = FIELD_NAMES[field.custom_field_id] || field.custom_field_id;
+    try {
+      await updateContact(contactId, { contact_custom_fields: [field] });
+      succeeded++;
+    } catch (err) {
+      failed++;
+      logger.warn('RD update field failed', {
+        phone: lead.phone,
+        field: fieldName,
+        value: typeof field.value === 'string' ? field.value.substring(0, 50) : field.value,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      await logError(lead.phone, { crm_field_failed: fieldName, field_id: field.custom_field_id }, err);
+    }
+  }
+
+  await logEvent('crm_sync', lead.phone, {
+    action: failed === 0 ? 'custom_fields_updated' : 'custom_fields_partial',
+    fieldsTotal: fields.length + (lead.name ? 1 : 0),
+    succeeded,
+    failed,
+  });
 }
 
 /**
