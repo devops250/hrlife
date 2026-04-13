@@ -147,5 +147,25 @@ describe('Fluxo 3: Agendamento', () => {
     expect(SCHEDULE[6]).toBeUndefined();
   });
 
-  it.todo('3.5 endHour com horario 23:00 gera endDateTime=24:00:00 invalido (bug M12) — corrigir com modulo 24');
+  it('3.5 horario 23:00 nao gera endDateTime T24:00:00 invalido [fix M12]', async () => {
+    vi.mocked(checkFreeBusy).mockResolvedValue([]);
+    vi.mocked(createEvent).mockResolvedValueOnce({
+      id: 'evt-23h',
+      summary: 'HR Life - Teste23h',
+      start: new Date('2026-04-20T23:00:00'),
+      end: new Date('2026-04-21T00:00:00'),
+      meetLink: null,
+      status: 'confirmed',
+    });
+
+    await executeTool(
+      'registra_agendamento',
+      { data: '2026-04-20', horario: '23:00', nome_lead: 'Teste23h' },
+      PHONE,
+    );
+
+    const callArgs = vi.mocked(createEvent).mock.calls[0][0];
+    expect(callArgs.endDateTime).not.toContain('T24:');
+    expect(callArgs.endDateTime).toBe('2026-04-21T00:00:00');
+  });
 });

@@ -129,8 +129,10 @@ async function execRegistraAgendamento(args: Record<string, string>, phone: stri
   try {
     const { data, horario, nome_lead } = args;
     const startDateTime = `${data}T${horario}:00`;
-    const endHour = parseInt(horario.split(':')[0], 10) + 1;
-    const endDateTime = `${data}T${String(endHour).padStart(2, '0')}:${horario.split(':')[1]}:00`;
+    const startDate = new Date(`${data}T${horario}:00`);
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const endDateTime = `${endDate.getFullYear()}-${pad2(endDate.getMonth() + 1)}-${pad2(endDate.getDate())}T${pad2(endDate.getHours())}:${pad2(endDate.getMinutes())}:00`;
 
     // Double-check: verificar se o slot ainda está disponível (freeBusy)
     const slotStart = new Date(`${data}T${horario}:00-03:00`);
