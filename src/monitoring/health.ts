@@ -7,6 +7,7 @@ import { metrics, getAvgResponseTimeMs, getMetricsSummary } from './metrics';
 import { isBusinessHours } from '../config/schedule';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
+import { uazapi } from '../whatsapp/uazapi.client';
 
 export async function healthCheck(_req: Request, res: Response): Promise<void> {
   let postgresOk = false;
@@ -17,6 +18,9 @@ export async function healthCheck(_req: Request, res: Response): Promise<void> {
   let lastWebhook: string | null = null;
   let followupLastRun: string | null = null;
   let minutesSinceLastWebhook: number | null = null;
+  let whatsappStatus: 'connected' | 'disconnected' | 'error' = 'error';
+  let whatsappInstance = '';
+  let whatsappCircuitBreaker = false;
 
   try {
     postgresOk = await testConnection();
@@ -63,11 +67,26 @@ export async function healthCheck(_req: Request, res: Response): Promise<void> {
     }
   }
 
+  // Checar WhatsApp (UAZAPI)
+  try {
+    const wa = await uazapi.checkHealth();
+    whatsappStatus = wa.connected ? 'connected' : 'disconnected';
+    whatsappInstance = wa.instanceName;
+  } catch {
+    whatsappStatus = 'error';
+  }
+
+  // Checar circuit breaker do Fix 3
+  try {
+    const flag = await redisClient.get('whatsapp_disconnected');
+    whatsappCircuitBreaker = flag !== null;
+  } catch { /* best effort */ }
+
   let status: 'ok' | 'degraded' | 'down' = 'ok';
 
   if (!postgresOk) {
     status = 'down';
-  } else if (!redisOk || errorsToday > 5) {
+  } else if (!redisOk || errorsToday > 5 || whatsappStatus !== 'connected') {
     status = 'degraded';
   } else if (lastWebhook && isBusinessHours()) {
     const lastWhDate = new Date(lastWebhook);
@@ -94,5 +113,8 @@ export async function healthCheck(_req: Request, res: Response): Promise<void> {
     followup_last_run: followupLastRun,
     avg_response_time_ms: getAvgResponseTimeMs(),
     metrics_live: getMetricsSummary(),
+    whatsapp: whatsappStatus,
+    whatsapp_instance: whatsappInstance,
+    whatsapp_circuit_breaker: whatsappCircuitBreaker,
   });
 }

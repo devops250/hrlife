@@ -51,6 +51,25 @@ export class UazapiClient {
     return error instanceof NotOnWhatsAppError;
   }
 
+  async checkHealth(): Promise<{ connected: boolean; instanceName: string }> {
+    try {
+      const res = await fetch(`${this.baseUrl}/status?token=${this.token}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return { connected: false, instanceName: '' };
+      const data = await res.json() as {
+        status: { checked_instance: { connection_status: string; is_healthy: boolean; name: string } };
+      };
+      const inst = data.status?.checked_instance;
+      return {
+        connected: inst?.connection_status === 'connected' && inst?.is_healthy === true,
+        instanceName: inst?.name || '',
+      };
+    } catch {
+      return { connected: false, instanceName: '' };
+    }
+  }
+
   async downloadMedia(messageId: string): Promise<Buffer> {
     return retry(
       async () => {
