@@ -3,7 +3,11 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 dotenv.config();
 const RD_TOKEN = process.env.RDSTATION_API_TOKEN || '';
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://hrlife:hrlife@localhost:5432/hrlife';
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('DATABASE_URL nao configurado. Rode com: DATABASE_URL=... node validate-rd.mjs');
+  process.exit(1);
+}
 
 const CF_IDS = {
   '69bb4655626559001e2972b4': 'birth_date',
