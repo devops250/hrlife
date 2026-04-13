@@ -14,6 +14,11 @@ vi.mock('../config/redis', () => ({
     del: vi.fn().mockResolvedValue(1),
     set: vi.fn().mockResolvedValue('OK'),
     get: vi.fn().mockResolvedValue(null),
+    multi: vi.fn().mockReturnValue({
+      lRange: vi.fn().mockReturnThis(),
+      del: vi.fn().mockReturnThis(),
+      exec: vi.fn().mockResolvedValue([[], 0]),
+    }),
   },
 }));
 
@@ -116,7 +121,7 @@ describe('Fluxo 2: Follow-up', () => {
     expect(next).toBeNull();
   });
 
-  it('2.3 enqueueForFollowup salva na fila Redis, getQueuedFollowups recupera e limpa', async () => {
+  it('2.3 enqueueForFollowup salva, getQueuedFollowups recupera atomicamente (MULTI/EXEC)', async () => {
     const queueItem = JSON.stringify({
       phone: '5511999999999',
       stage: 1,
@@ -125,8 +130,14 @@ describe('Fluxo 2: Follow-up', () => {
     });
 
     vi.mocked(redisClient.rPush).mockResolvedValueOnce(1);
-    vi.mocked(redisClient.lRange).mockResolvedValueOnce([queueItem]);
-    vi.mocked(redisClient.del).mockResolvedValueOnce(1);
+
+    // Mock multi().lRange().del().exec() — node-redis v5 retorna [T1, T2]
+    const mockMulti = {
+      lRange: vi.fn().mockReturnThis(),
+      del: vi.fn().mockReturnThis(),
+      exec: vi.fn().mockResolvedValueOnce([[queueItem], 1]),
+    };
+    vi.mocked(redisClient.multi).mockReturnValueOnce(mockMulti as ReturnType<typeof redisClient.multi>);
 
     await enqueueForFollowup('5511999999999', 1, 'Oi, tudo bem?');
 
@@ -141,7 +152,7 @@ describe('Fluxo 2: Follow-up', () => {
     expect(items[0].phone).toBe('5511999999999');
     expect(items[0].stage).toBe(1);
     expect(items[0].message).toBe('Oi, tudo bem?');
-    expect(vi.mocked(redisClient.del)).toHaveBeenCalledWith('followup:queue');
+    expect(mockMulti.exec).toHaveBeenCalled();
   });
 
   it('2.4 Lead pausado ha 30+ min e reativado automaticamente [fix TODO 2.4]', async () => {
