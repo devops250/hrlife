@@ -28,6 +28,7 @@ vi.mock('../utils/logger', () => ({
 
 vi.mock('../database/events.repo', () => ({
   logEvent: vi.fn().mockResolvedValue(undefined),
+  logError: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../whatsapp/uazapi.client', () => ({
@@ -36,6 +37,13 @@ vi.mock('../whatsapp/uazapi.client', () => ({
   NotOnWhatsAppError: class NotOnWhatsAppError extends Error {
     constructor(msg?: string) { super(msg); this.name = 'NotOnWhatsAppError'; }
   },
+  WhatsAppDisconnectedError: class WhatsAppDisconnectedError extends Error {
+    constructor() { super('WhatsApp disconnected — instância desconectada'); this.name = 'WhatsAppDisconnectedError'; }
+  },
+}));
+
+vi.mock('../config/schedule', () => ({
+  isBusinessHours: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../crm/rdstation.service', () => ({
@@ -51,7 +59,9 @@ import { getNextStage, FOLLOWUP_TEMPLATES } from '../followup/stages';
 import { enqueueForFollowup, getQueuedFollowups } from '../followup/queue';
 import { query } from '../database/client';
 import { redisClient } from '../config/redis';
-import { reactivatePausedLeads } from '../followup/scheduler';
+import { uazapi } from '../whatsapp/uazapi.client';
+import { isBusinessHours } from '../config/schedule';
+import { reactivatePausedLeads, processFollowups } from '../followup/scheduler';
 
 // ============================================================
 // HELPERS
@@ -93,8 +103,10 @@ function makeLead(overrides: Partial<Lead> = {}): Lead {
 describe('Fluxo 2: Follow-up', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // alreadySentStage retorna false (nao enviou ainda)
     mockQuery.mockResolvedValue({ rows: [] });
+    vi.mocked(redisClient.get).mockResolvedValue(null);
+    vi.mocked(redisClient.set).mockResolvedValue('OK');
+    vi.mocked(isBusinessHours).mockReturnValue(false);
   });
 
   it('2.1 Lead elegivel recebe follow-up no estagio correto (followup_status=1 -> stage 2)', async () => {
@@ -181,5 +193,40 @@ describe('Fluxo 2: Follow-up', () => {
     const next = await getNextStage(lead);
 
     expect(next).toBeNull();
+  });
+
+  it('2.6 sendText lanca WhatsAppDisconnectedError -> scheduler seta flag Redis e para loop [fix A1-503]', async () => {
+    const phone = '5573991488556';
+    const lead = makeLead({
+      phone,
+      followup_status: 2,
+      last_ia_message: new Date(Date.now() - 7 * 60 * 60 * 1000), // 7h atras > 360min threshold
+    });
+
+    // isBusinessHours true para entrar no loop de leads
+    vi.mocked(isBusinessHours).mockReturnValue(true);
+
+    // Sem circuit breaker ativo
+    vi.mocked(redisClient.get).mockResolvedValue(null);
+
+    // mockQuery: reactivate(SELECT) + SELECT leads + findLeadByPhone + alreadySentStage
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })      // reactivatePausedLeads
+      .mockResolvedValueOnce({ rows: [lead] })  // SELECT active leads
+      .mockResolvedValueOnce({ rows: [lead] })  // findLeadByPhone
+      .mockResolvedValueOnce({ rows: [] });     // alreadySentStage (followup_log)
+
+    // sendText lanca WhatsAppDisconnectedError
+    const { WhatsAppDisconnectedError } = await import('../whatsapp/uazapi.client');
+    vi.mocked(uazapi.sendText).mockRejectedValueOnce(new WhatsAppDisconnectedError());
+
+    await processFollowups();
+
+    // Circuit breaker deve ter sido setado com TTL 600s
+    expect(vi.mocked(redisClient.set)).toHaveBeenCalledWith(
+      'whatsapp_disconnected', '1', { EX: 600 },
+    );
+    // sendText chamado exatamente 1x — loop parou apos o erro
+    expect(vi.mocked(uazapi.sendText)).toHaveBeenCalledTimes(1);
   });
 });

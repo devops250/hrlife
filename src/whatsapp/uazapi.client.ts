@@ -34,6 +34,11 @@ export class UazapiClient {
             throw new NotOnWhatsAppError(phone);
           }
 
+          // Instância desconectada — erro sistêmico, não adianta retry
+          if (res.status === 503 && err.includes('WhatsApp disconnected')) {
+            throw new WhatsAppDisconnectedError();
+          }
+
           throw new Error(`UAZAPI sendText falhou (${res.status}): ${err}`);
         }
         logger.info('Mensagem enviada via UAZAPI', { phone });
@@ -71,6 +76,13 @@ export class NotOnWhatsAppError extends Error {
   constructor(public phone: string) {
     super(`Número ${phone} não está no WhatsApp`);
     this.name = 'NotOnWhatsAppError';
+  }
+}
+
+export class WhatsAppDisconnectedError extends Error {
+  constructor() {
+    super('WhatsApp disconnected — instância desconectada');
+    this.name = 'WhatsAppDisconnectedError';
   }
 }
 

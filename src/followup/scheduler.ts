@@ -8,7 +8,7 @@ import { uazapi } from '../whatsapp/uazapi.client';
 import { logEvent, logError } from '../database/events.repo';
 import { moveDealToStage } from '../crm/rdstation.service';
 import { env } from '../config/env';
-import { UazapiClient, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
+import { UazapiClient, NotOnWhatsAppError, WhatsAppDisconnectedError } from '../whatsapp/uazapi.client';
 import { findLeadByPhone, type Lead } from '../database/leads.repo';
 
 const BATCH_SIZE = 10;
@@ -59,7 +59,7 @@ export async function reactivatePausedLeads(): Promise<number> {
   return count;
 }
 
-async function processFollowups(): Promise<void> {
+export async function processFollowups(): Promise<void> {
   if (isRunning) {
     logger.warn('Follow-up scheduler já está rodando (memory lock), pulando');
     return;
@@ -80,6 +80,14 @@ async function processFollowups(): Promise<void> {
 
   try {
     logger.info('Follow-up scheduler iniciado');
+
+    // Circuit breaker: verificar se WhatsApp está desconectado
+    const { redisClient: cbClient } = await import('../config/redis');
+    const waDisconnected = await cbClient.get('whatsapp_disconnected');
+    if (waDisconnected) {
+      logger.warn('WhatsApp desconectado (circuit breaker ativo) — scheduler pausado até reconexão');
+      return;
+    }
 
     // 0. Reativar leads pausados há 30+ min (Rodrigo não respondeu mais)
     const reactivated = await reactivatePausedLeads();
@@ -164,7 +172,13 @@ async function processFollowups(): Promise<void> {
         sent++;
         await sleep(DELAY_BETWEEN_SENDS_MS);
       } catch (error) {
-        if (error instanceof NotOnWhatsAppError) {
+        if (error instanceof WhatsAppDisconnectedError) {
+          // Instância desconectada — ativar circuit breaker e parar o ciclo
+          const { redisClient: rc } = await import('../config/redis');
+          await rc.set('whatsapp_disconnected', '1', { EX: 600 }); // 10min TTL
+          logger.warn('WhatsApp desconectado — circuit breaker ativado por 10min', { phone: lead.phone });
+          break;
+        } else if (error instanceof NotOnWhatsAppError) {
           // Número inválido — pausar lead para não ficar tentando
           await query(
             "UPDATE leads SET status = 'invalid_phone', updated_at = NOW() WHERE phone = $1",

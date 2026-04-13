@@ -17,7 +17,7 @@ export async function retry<T>(
       return await fn();
     } catch (error) {
       // Erros permanentes — não faz sentido retry
-      if (error instanceof Error && error.name === 'NotOnWhatsAppError') {
+      if (error instanceof Error && (error.name === 'NotOnWhatsAppError' || error.name === 'WhatsAppDisconnectedError')) {
         throw error;
       }
       if (attempt === maxAttempts) {
