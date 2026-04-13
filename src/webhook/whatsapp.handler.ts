@@ -9,7 +9,7 @@ import { normalizePhone } from '../utils/phone';
 import { logger } from '../utils/logger';
 import { findLeadByPhone, createLead, updateLeadOnMessage, clearLeadHistory } from '../database/leads.repo';
 import { query } from '../database/client';
-import { logEvent } from '../database/events.repo';
+import { logEvent, logError } from '../database/events.repo';
 import { uazapi } from '../whatsapp/uazapi.client';
 import { addToBuffer } from '../conversation/message-buffer';
 import { incrementMetric } from '../monitoring/metrics';
@@ -128,6 +128,6 @@ export async function whatsappHandler(req: Request, res: Response): Promise<void
     );
   } catch (error) {
     logger.error('Erro no whatsapp handler', { error });
-    await logEvent('error', undefined, { handler: 'whatsapp', error: String(error) });
+    await logError(undefined, { handler: 'whatsapp' }, error);
   }
 }

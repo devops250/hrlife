@@ -5,7 +5,7 @@ import { isBusinessHours } from '../config/schedule';
 import { getNextStage } from './stages';
 import { enqueueForFollowup, getQueuedFollowups } from './queue';
 import { uazapi } from '../whatsapp/uazapi.client';
-import { logEvent } from '../database/events.repo';
+import { logEvent, logError } from '../database/events.repo';
 import { moveDealToStage } from '../crm/rdstation.service';
 import { env } from '../config/env';
 import { UazapiClient, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
@@ -178,7 +178,7 @@ async function processFollowups(): Promise<void> {
             'INSERT INTO followup_log (phone, stage, message, success) VALUES ($1, $2, $3, false)',
             [lead.phone, next.stage, next.message],
           );
-          await logEvent('error', lead.phone, { followup: true, stage: next.stage, error: String(error) });
+          await logError(lead.phone, { followup: true, stage: next.stage }, error);
         }
       }
     }
@@ -231,7 +231,7 @@ async function processFollowups(): Promise<void> {
     });
   } catch (error) {
     logger.error('Erro no follow-up scheduler', { error });
-    await logEvent('error', undefined, { scheduler: 'followup', error: String(error) });
+    await logError(undefined, { scheduler: 'followup' }, error);
   } finally {
     isRunning = false;
     await releaseLock();

@@ -14,7 +14,7 @@ import { normalizePhone } from '../utils/phone';
 import { logger } from '../utils/logger';
 import { findLeadByPhone, createLead, updateLeadName, updateLeadIaMessage } from '../database/leads.repo';
 import { query } from '../database/client';
-import { logEvent } from '../database/events.repo';
+import { logEvent, logError } from '../database/events.repo';
 import { uazapi, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
 import { generateFirstMessage } from '../conversation/first-message';
 import { syncLeadCreated, syncLeadBasic } from '../crm/sync';
@@ -130,7 +130,7 @@ export async function processIncomingLead(input: IncomingLead): Promise<Pipeline
     return { success: true, isNew, isDuplicate: false, phone };
   } catch (error) {
     logger.error('Pipeline: erro no processamento', { phone, source: input.source, error });
-    await logEvent('error', phone, { pipeline: true, source: input.source, error: String(error) });
+    await logError(phone, { pipeline: true, source: input.source }, error);
     return { success: false, isNew: false, isDuplicate: false, phone, error: String(error) };
   } finally {
     await redisClient.del(lockKey);
@@ -159,7 +159,7 @@ async function syncWithRetry(phone: string, lead: { phone: string; name: string 
         await new Promise((r) => setTimeout(r, attempt * 2000)); // backoff: 2s, 4s
       } else {
         logger.error('CRM sync falhou após 3 tentativas', { phone, source, error: String(error) });
-        await logEvent('error', phone, { crm_sync_exhausted: true, attempts: maxRetries, error: String(error) });
+        await logError(phone, { crm_sync_exhausted: true, attempts: maxRetries }, error);
         notifyProblem('CRM sync falhou após 3 tentativas', { phone, fonte: source }).catch(() => {});
       }
     }

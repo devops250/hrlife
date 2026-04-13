@@ -19,6 +19,6 @@ export interface QueuedFollowup {
 export async function getQueuedFollowups(): Promise<QueuedFollowup[]> {
   // MULTI/EXEC: lRange + del atômicos — evita perda de itens em caso de crash
   const results = await redisClient.multi().lRange(QUEUE_KEY, 0, -1).del(QUEUE_KEY).exec();
-  const raw = (results?.[0] ?? []) as string[];
+  const raw = ((results?.[0] ?? []) as unknown) as string[];
   return raw.map((r) => JSON.parse(r));
 }

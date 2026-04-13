@@ -1,7 +1,7 @@
 import { env } from '../config/env';
 import { findContactByPhone, createDeal, findDealsByContact, moveDealToStage } from './rdstation.service';
 import { updateLeadData, findLeadByPhone, type Lead } from '../database/leads.repo';
-import { logEvent } from '../database/events.repo';
+import { logEvent, logError } from '../database/events.repo';
 import { logger } from '../utils/logger';
 import { trackRdSync } from '../monitoring/metrics';
 import { redisClient } from '../config/redis';
@@ -142,7 +142,7 @@ export async function syncLeadCreated(lead: Lead): Promise<void> {
   } catch (error) {
     trackRdSync(false);
     logger.error('CRM sync falhou (lead criado)', { phone: lead.phone, error });
-    await logEvent('error', lead.phone, { crm_sync: 'lead_created', error: String(error) });
+    await logError(lead.phone, { crm_sync: 'lead_created' }, error);
   }
 }
 
@@ -224,7 +224,7 @@ export async function syncLeadScheduled(lead: Lead): Promise<void> {
   } catch (error) {
     trackRdSync(false);
     logger.error('CRM sync falhou (lead agendado)', { phone: lead.phone, error });
-    await logEvent('error', lead.phone, { crm_sync: 'lead_scheduled', error: String(error) });
+    await logError(lead.phone, { crm_sync: 'lead_scheduled' }, error);
   } finally {
     await redisClient.del(lockKey);
   }

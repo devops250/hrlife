@@ -28,3 +28,13 @@ export async function getLastWebhookTime(): Promise<Date | null> {
   );
   return result.rows[0]?.created_at || null;
 }
+
+export async function logError(
+  phone: string | undefined,
+  context: Record<string, unknown>,
+  error?: unknown,
+): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error ?? 'unknown');
+  const stack = error instanceof Error && error.stack ? error.stack.substring(0, 500) : undefined;
+  await logEvent('error', phone, { ...context, message, ...(stack ? { stack } : {}) });
+}

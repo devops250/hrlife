@@ -99,7 +99,12 @@ async function checkAndAlert(): Promise<void> {
     if (!healthy) {
       consecutiveFailures++;
       if (consecutiveFailures >= 2) {
-        await sendAlert(issues.join('\n'));
+        const cooldownKey = 'alert_cooldown:systemic';
+        const inCooldown = await redisClient.get(cooldownKey);
+        if (!inCooldown) {
+          await sendAlert(issues.join('\n'));
+          await redisClient.set(cooldownKey, '1', { EX: 3600 }); // cooldown 1h — evita spam
+        }
         consecutiveFailures = 0;
       }
     } else {

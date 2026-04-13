@@ -16,7 +16,7 @@ import { TOOLS } from './tools';
 import { executeTool } from './tool-executor';
 import { getHistory, addMessage } from '../database/conversations.repo';
 import { findLeadByPhone, updateLeadIaMessage } from '../database/leads.repo';
-import { logEvent } from '../database/events.repo';
+import { logEvent, logError } from '../database/events.repo';
 import { uazapi, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
 import { query } from '../database/client';
 import { getSaoPauloNow } from '../config/schedule';
@@ -161,14 +161,14 @@ export async function processConversation(phone: string, chatInput: string): Pro
         logger.warn('Número inválido no WhatsApp', { phone });
       } else {
         logger.error('Falha ao enviar via UAZAPI (conversa salva no DB)', { phone, error: sendError });
-        await logEvent('error', phone, { send_failed: true, error: String(sendError), latency_ms: latency });
+        await logError(phone, { send_failed: true, latency_ms: latency }, sendError);
         incrementMetric('errors');
       }
     }
   } catch (error) {
     const latency = Date.now() - startTime;
     logger.error('Erro no engine de conversa', { phone, error, latency_ms: latency });
-    await logEvent('error', phone, { engine: true, error: String(error), latency_ms: latency });
+    await logError(phone, { engine: true, latency_ms: latency }, error);
     incrementMetric('errors');
   }
 }
@@ -189,7 +189,7 @@ async function callClaude(
 
 async function handleAiFailure(phone: string, error: unknown): Promise<void> {
   logger.error('Claude API falhou, enviando fallback', { phone, error: String(error) });
-  await logEvent('error', phone, { ai_fallback: true, error: String(error) });
+  await logError(phone, { ai_fallback: true }, error);
   incrementMetric('errors');
   await addMessage(phone, 'assistant', FALLBACK_MESSAGE);
   await uazapi.sendText(phone, FALLBACK_MESSAGE);

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
-import { logEvent } from '../database/events.repo';
+import { logEvent, logError } from '../database/events.repo';
 import { incrementMetric } from '../monitoring/metrics';
 import { processIncomingLead } from './lead-pipeline';
 
@@ -70,7 +70,7 @@ export async function metaLeadHandler(req: Request, res: Response): Promise<void
     }
   } catch (error) {
     logger.error('Erro no meta lead handler', { error });
-    await logEvent('error', undefined, { handler: 'meta_lead', error: String(error) });
+    await logError(undefined, { handler: 'meta_lead' }, error);
   }
 }
 
@@ -91,13 +91,12 @@ async function processMetaLead(leadgenId: string): Promise<void> {
     if (!res.ok) {
       const errorText = await res.text();
       logger.error('Meta Graph API falhou', { status: res.status, error: errorText, leadgenId });
-      await logEvent('error', undefined, {
+      await logError(undefined, {
         handler: 'meta_lead',
         action: 'graph_api_failed',
         status: res.status,
-        error: errorText.substring(0, 200),
         leadgenId,
-      });
+      }, errorText.substring(0, 200));
       return;
     }
 
@@ -124,7 +123,7 @@ async function processMetaLead(leadgenId: string): Promise<void> {
 
     if (!telefone) {
       logger.warn('Meta lead sem telefone', { leadgenId, fields });
-      await logEvent('error', undefined, {
+      await logError(undefined, {
         handler: 'meta_lead',
         action: 'no_phone',
         leadgenId,
@@ -144,11 +143,10 @@ async function processMetaLead(leadgenId: string): Promise<void> {
     logger.info('Meta lead processado via pipeline', { phone: telefone, nome, leadgenId });
   } catch (error) {
     logger.error('Erro ao processar meta lead', { leadgenId, error });
-    await logEvent('error', undefined, {
+    await logError(undefined, {
       handler: 'meta_lead',
       action: 'process_failed',
       leadgenId,
-      error: String(error),
-    });
+    }, error);
   }
 }
