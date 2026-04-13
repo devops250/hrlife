@@ -1,0 +1,140 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Lead } from '../database/leads.repo';
+
+// ============================================================
+// MOCKS
+// ============================================================
+const mockQuery = vi.fn().mockResolvedValue({ rows: [] });
+vi.mock('../database/client', () => ({ query: (...a: unknown[]) => mockQuery(...a) }));
+
+vi.mock('../config/redis', () => ({
+  redisClient: {
+    rPush: vi.fn().mockResolvedValue(1),
+    lRange: vi.fn().mockResolvedValue([]),
+    del: vi.fn().mockResolvedValue(1),
+    set: vi.fn().mockResolvedValue('OK'),
+    get: vi.fn().mockResolvedValue(null),
+  },
+}));
+
+vi.mock('../utils/logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+// ============================================================
+// IMPORTS
+// ============================================================
+import { getNextStage, FOLLOWUP_TEMPLATES } from '../followup/stages';
+import { enqueueForFollowup, getQueuedFollowups } from '../followup/queue';
+import { query } from '../database/client';
+import { redisClient } from '../config/redis';
+
+// ============================================================
+// HELPERS
+// ============================================================
+function makeLead(overrides: Partial<Lead> = {}): Lead {
+  return {
+    id: 1,
+    phone: '5511999999999',
+    name: 'Teste',
+    source: 'whatsapp',
+    status: 'active',
+    birth_date: null,
+    height: null,
+    weight: null,
+    profession: null,
+    smoker: null,
+    income: null,
+    cpf: null,
+    scheduled: false,
+    scheduled_at: null,
+    followup_status: 0,
+    last_ia_message: new Date(Date.now() - 31 * 60 * 1000),
+    last_lead_message: null,
+    has_lead_replied: false,
+    rd_contact_id: null,
+    rd_deal_id: 'deal-123',
+    chatwoot_contact_id: null,
+    chatwoot_conversation_id: null,
+    last_manual_message: null,
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  };
+}
+
+// ============================================================
+// TESTES
+// ============================================================
+describe('Fluxo 2: Follow-up', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // alreadySentStage retorna false (nao enviou ainda)
+    mockQuery.mockResolvedValue({ rows: [] });
+  });
+
+  it('2.1 Lead elegivel recebe follow-up no estagio correto (followup_status=1 -> stage 2)', async () => {
+    const lead = makeLead({
+      followup_status: 1,
+      last_ia_message: new Date(Date.now() - 3 * 60 * 60 * 1000), // 3h atras > 120min
+    });
+
+    const next = await getNextStage(lead);
+
+    expect(next).not.toBeNull();
+    expect(next!.stage).toBe(2);
+    expect(next!.message).toContain('reforçar');
+  });
+
+  it('2.2 Lead com followup_status>=4 nao recebe mais follow-up (getNextStage retorna null)', async () => {
+    const lead = makeLead({
+      followup_status: 4,
+      last_ia_message: new Date(Date.now() - 25 * 60 * 60 * 1000),
+    });
+
+    const next = await getNextStage(lead);
+
+    expect(next).toBeNull();
+  });
+
+  it('2.3 enqueueForFollowup salva na fila Redis, getQueuedFollowups recupera e limpa', async () => {
+    const queueItem = JSON.stringify({
+      phone: '5511999999999',
+      stage: 1,
+      message: 'Oi, tudo bem?',
+      queuedAt: new Date().toISOString(),
+    });
+
+    vi.mocked(redisClient.rPush).mockResolvedValueOnce(1);
+    vi.mocked(redisClient.lRange).mockResolvedValueOnce([queueItem]);
+    vi.mocked(redisClient.del).mockResolvedValueOnce(1);
+
+    await enqueueForFollowup('5511999999999', 1, 'Oi, tudo bem?');
+
+    expect(vi.mocked(redisClient.rPush)).toHaveBeenCalledWith(
+      'followup:queue',
+      expect.stringContaining('"phone":"5511999999999"'),
+    );
+
+    const items = await getQueuedFollowups();
+
+    expect(items).toHaveLength(1);
+    expect(items[0].phone).toBe('5511999999999');
+    expect(items[0].stage).toBe(1);
+    expect(items[0].message).toBe('Oi, tudo bem?');
+    expect(vi.mocked(redisClient.del)).toHaveBeenCalledWith('followup:queue');
+  });
+
+  it.todo('2.4 Lead pausado ha 30+ min e reativado automaticamente (logica do scheduler — requer exportar processFollowups)');
+
+  it('2.5 Delay minimo entre estagios e respeitado (15min < 120min = nao envia stage 2)', async () => {
+    const lead = makeLead({
+      followup_status: 1,
+      last_ia_message: new Date(Date.now() - 15 * 60 * 1000), // apenas 15min atras
+    });
+
+    const next = await getNextStage(lead);
+
+    expect(next).toBeNull();
+  });
+});
