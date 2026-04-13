@@ -50,12 +50,12 @@ async function checkAndAlert(): Promise<void> {
     // Check erros do dia
     if (pgOk) {
       const errorsResult = await query(
-        "SELECT COUNT(*) as count FROM events WHERE type = 'error' AND created_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'",
+        "SELECT COUNT(*) as count FROM events WHERE type = 'error' AND created_at >= NOW() - INTERVAL '30 minutes'",
       );
-      const errorsToday = parseInt(errorsResult.rows[0]?.count || '0', 10);
-      if (errorsToday > 5) {
+      const errorsRecent = parseInt(errorsResult.rows[0]?.count || '0', 10);
+      if (errorsRecent > 3) {
         healthy = false;
-        issues.push(`${errorsToday} erros hoje — possível problema sistêmico`);
+        issues.push(`${errorsRecent} erros nos últimos 30min — possível problema sistêmico`);
       }
 
       if (isBusinessHours()) {
