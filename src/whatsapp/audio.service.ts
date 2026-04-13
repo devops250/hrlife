@@ -2,7 +2,8 @@ import OpenAI from 'openai';
 import { retry } from '../utils/retry';
 
 // Whisper (transcrição de áudio) permanece na OpenAI — Claude não tem equivalente
-const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
+import { env } from '../config/env';
+const OPENAI_KEY = env.OPENAI_API_KEY;
 const openai = new OpenAI({ apiKey: OPENAI_KEY });
 
 export async function transcribeAudio(mediaBuffer: Buffer): Promise<string> {

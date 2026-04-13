@@ -48,4 +48,9 @@ export const env = {
   CHATWOOT_INBOX_ID: process.env.CHATWOOT_INBOX_ID || '2',
   DASHBOARD_USER: process.env.DASHBOARD_USER || 'admin',
   DASHBOARD_PASS: process.env.DASHBOARD_PASS || '',
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+  META_ACCESS_TOKEN: process.env.META_ACCESS_TOKEN || '',
+  META_PAGE_ID: process.env.META_PAGE_ID || '',
+  META_VERIFY_TOKEN: process.env.META_VERIFY_TOKEN || 'hrlife-sdr-verify-2026',
+  META_PAGE_TOKEN: process.env.META_PAGE_TOKEN || '',
 } as const;

@@ -5,8 +5,9 @@ import { logEvent } from '../database/events.repo';
 import { incrementMetric } from '../monitoring/metrics';
 import { processIncomingLead } from './lead-pipeline';
 
-const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || '';
-const META_VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'hrlife-sdr-verify-2026';
+import { env } from '../config/env';
+const META_ACCESS_TOKEN = env.META_ACCESS_TOKEN;
+const META_VERIFY_TOKEN = env.META_VERIFY_TOKEN;
 
 /**
  * GET /webhook/meta — Verificação do webhook (Facebook challenge)
