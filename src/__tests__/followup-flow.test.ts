@@ -21,6 +21,24 @@ vi.mock('../utils/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('../database/events.repo', () => ({
+  logEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../whatsapp/uazapi.client', () => ({
+  uazapi: { sendText: vi.fn().mockResolvedValue(undefined) },
+  UazapiClient: class UazapiClient {},
+  NotOnWhatsAppError: class NotOnWhatsAppError extends Error {
+    constructor(msg?: string) { super(msg); this.name = 'NotOnWhatsAppError'; }
+  },
+}));
+
+vi.mock('../crm/rdstation.service', () => ({
+  moveDealToStage: vi.fn().mockResolvedValue(undefined),
+  updateDeal: vi.fn().mockResolvedValue(undefined),
+  updateContact: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ============================================================
 // IMPORTS
 // ============================================================
@@ -28,6 +46,7 @@ import { getNextStage, FOLLOWUP_TEMPLATES } from '../followup/stages';
 import { enqueueForFollowup, getQueuedFollowups } from '../followup/queue';
 import { query } from '../database/client';
 import { redisClient } from '../config/redis';
+import { reactivatePausedLeads } from '../followup/scheduler';
 
 // ============================================================
 // HELPERS
@@ -125,7 +144,22 @@ describe('Fluxo 2: Follow-up', () => {
     expect(vi.mocked(redisClient.del)).toHaveBeenCalledWith('followup:queue');
   });
 
-  it.todo('2.4 Lead pausado ha 30+ min e reativado automaticamente (logica do scheduler — requer exportar processFollowups)');
+  it('2.4 Lead pausado ha 30+ min e reativado automaticamente [fix TODO 2.4]', async () => {
+    const phone = '5511888000111';
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [makeLead({ phone, status: 'paused', last_manual_message: new Date(Date.now() - 35 * 60 * 1000) })],
+      })
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE
+
+    const count = await reactivatePausedLeads();
+
+    expect(count).toBe(1);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE leads SET status = 'active'"),
+      [phone],
+    );
+  });
 
   it('2.5 Delay minimo entre estagios e respeitado (15min < 120min = nao envia stage 2)', async () => {
     const lead = makeLead({

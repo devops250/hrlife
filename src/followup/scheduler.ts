@@ -37,6 +37,28 @@ async function releaseLock(): Promise<void> {
   } catch { /* best effort */ }
 }
 
+export async function reactivatePausedLeads(): Promise<number> {
+  let count = 0;
+  const pausedResult = await query(
+    `SELECT * FROM leads
+     WHERE status = 'paused'
+       AND last_manual_message IS NOT NULL
+       AND last_manual_message < NOW() - INTERVAL '30 minutes'`,
+  );
+
+  for (const lead of pausedResult.rows as Lead[]) {
+    await query(
+      "UPDATE leads SET status = 'active', has_lead_replied = true, followup_status = 0, last_manual_message = NULL, updated_at = NOW() WHERE phone = $1",
+      [lead.phone],
+    );
+    await logEvent('lead_auto_resumed', lead.phone, { reason: '30min sem resposta manual' });
+    logger.info('Lead reativado automaticamente (30min sem resposta manual)', { phone: lead.phone });
+    count++;
+  }
+
+  return count;
+}
+
 async function processFollowups(): Promise<void> {
   if (isRunning) {
     logger.warn('Follow-up scheduler já está rodando (memory lock), pulando');
@@ -60,23 +82,7 @@ async function processFollowups(): Promise<void> {
     logger.info('Follow-up scheduler iniciado');
 
     // 0. Reativar leads pausados há 30+ min (Rodrigo não respondeu mais)
-    let reactivated = 0;
-    const pausedResult = await query(
-      `SELECT * FROM leads
-       WHERE status = 'paused'
-         AND last_manual_message IS NOT NULL
-         AND last_manual_message < NOW() - INTERVAL '30 minutes'`,
-    );
-
-    for (const lead of pausedResult.rows as Lead[]) {
-      await query(
-        "UPDATE leads SET status = 'active', has_lead_replied = true, followup_status = 0, last_manual_message = NULL, updated_at = NOW() WHERE phone = $1",
-        [lead.phone],
-      );
-      await logEvent('lead_auto_resumed', lead.phone, { reason: '30min sem resposta manual' });
-      logger.info('Lead reativado automaticamente (30min sem resposta manual)', { phone: lead.phone });
-      reactivated++;
-    }
+    const reactivated = await reactivatePausedLeads();
 
     // 1. Processar fila noturna primeiro (se estiver em horário comercial)
     if (isBusinessHours()) {
