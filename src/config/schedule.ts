@@ -12,15 +12,6 @@ export function getAvailableSlots(dayOfWeek: number, period: 'manha' | 'tarde' |
   return daySchedule[period] || [];
 }
 
-export function isValidSlot(date: Date): boolean {
-  const day = date.getDay();
-  if (day === 0 || day === 6) return false;
-  const hours = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-  const daySchedule = SCHEDULE[day];
-  if (!daySchedule) return false;
-  return [...daySchedule.manha, ...daySchedule.tarde, ...daySchedule.noite].includes(hours);
-}
-
 export function isBusinessHours(date: Date = new Date()): boolean {
   const spDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
   const hour = spDate.getHours();

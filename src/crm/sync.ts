@@ -289,7 +289,6 @@ export async function syncLeadScheduled(lead: Lead): Promise<void> {
 /**
  * Converte "DD/MM/AAAA" para "AAAA-MM-DD" (ISO 8601, formato do RD Station)
  */
-import { convertBirthdayToISO } from '../utils/date';
 
 // IDs dos campos customizados do RD Station CRM (mapeados do contato real)
 const RD_CUSTOM_FIELDS = {
