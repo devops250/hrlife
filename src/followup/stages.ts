@@ -1,4 +1,5 @@
 import type { Lead } from '../database/leads.repo';
+import { query } from '../database/client';
 
 export const FOLLOWUP_TEMPLATES = {
   1: { delayMinutes: 30,   message: (name: string) => `${name}, tudo certo? Pode ter sido um momento corrido. Podemos continuar de onde paramos.` },
@@ -7,7 +8,18 @@ export const FOLLOWUP_TEMPLATES = {
   4: { delayMinutes: 1440, message: (name: string) => `${name}, esta será minha última tentativa de contato por agora. Caso queira conhecer as soluções de proteção familiar e financeira da HR Life em outro momento, basta me enviar uma mensagem e retomamos o processo. Obrigada.` },
 } as const;
 
-export function getNextStage(lead: Lead): { stage: number; message: string } | null {
+/**
+ * Verifica se já enviou follow-up deste stage para este lead.
+ */
+async function alreadySentStage(phone: string, stage: number): Promise<boolean> {
+  const result = await query(
+    "SELECT 1 FROM followup_log WHERE phone = $1 AND stage = $2 AND (success IS NULL OR success = true) LIMIT 1",
+    [phone, stage],
+  );
+  return result.rows.length > 0;
+}
+
+export async function getNextStage(lead: Lead): Promise<{ stage: number; message: string } | null> {
   if (lead.scheduled) return null;
   if (lead.followup_status >= 4) return null;
   if (!lead.last_ia_message) return null;
@@ -21,6 +33,10 @@ export function getNextStage(lead: Lead): { stage: number; message: string } | n
 
   if (!template) return null;
   if (minutesSince < template.delayMinutes) return null;
+
+  // Verificar se já enviou este stage (anti-loop)
+  const sent = await alreadySentStage(lead.phone, nextStage);
+  if (sent) return null;
 
   const name = lead.name || 'Olá';
   return {

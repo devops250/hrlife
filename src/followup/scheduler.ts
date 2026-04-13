@@ -131,7 +131,7 @@ async function processFollowups(): Promise<void> {
         continue;
       }
 
-      const next = getNextStage(freshLead);
+      const next = await getNextStage(freshLead);
       if (!next) {
         skipped++;
         continue;
