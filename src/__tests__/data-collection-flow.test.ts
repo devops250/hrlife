@@ -50,12 +50,21 @@ vi.mock('../utils/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('../config/redis', () => ({
+  redisClient: {
+    set: vi.fn().mockResolvedValue('OK'),
+    get: vi.fn().mockResolvedValue(null),
+    del: vi.fn().mockResolvedValue(1),
+  },
+}));
+
 // ============================================================
 // IMPORTS
 // ============================================================
 import { executeTool } from '../conversation/tool-executor';
 import { findLeadByPhone, updateLeadData } from '../database/leads.repo';
 import { syncLeadCreated, syncLeadScheduled } from '../crm/sync';
+import { redisClient } from '../config/redis';
 
 const PHONE = '5511999999999';
 
@@ -141,11 +150,15 @@ describe('Fluxo 4: Coleta de Dados (cadastra_lead)', () => {
     }
   });
 
-  it('4.3 Dedup bloqueia chamada duplicada em menos de 30s', async () => {
-    // Phone exclusivo para nao colidir com dedup de testes anteriores
+  it('4.3 Dedup Redis bloqueia chamada duplicada em menos de 30s', async () => {
     const phone3 = '5531999888777';
     vi.mocked(findLeadByPhone).mockResolvedValue({ ...baseLead, phone: phone3 });
     const args = { nome_completo: 'Maria Santos', agendado: 'false' };
+
+    // 1a chamada: Redis SET NX retorna 'OK' (lock adquirido)
+    vi.mocked(redisClient.set).mockResolvedValueOnce('OK');
+    // 2a chamada: Redis SET NX retorna null (já existe, bloqueado)
+    vi.mocked(redisClient.set).mockResolvedValueOnce(null as unknown as string);
 
     const result1 = await executeTool('cadastra_lead', args, phone3);
     const result2 = await executeTool('cadastra_lead', args, phone3);

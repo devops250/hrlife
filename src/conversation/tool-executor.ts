@@ -18,8 +18,6 @@ import { updateDeal, updateContact } from '../crm/rdstation.service';
 import { trackToolCall } from '../monitoring/metrics';
 import { notifyLeadScheduled } from '../monitoring/alerts';
 
-// Dedup: evitar cadastra_lead duplicada na mesma fase
-const recentCadastro = new Map<string, number>();
 
 // Nomes inválidos
 const INVALID_NAMES = ['cliente', 'lead', 'usuário', 'usuario', 'olá', 'ola', 'oi', ''];
@@ -51,14 +49,14 @@ async function execCadastraLead(args: Record<string, string>, phone: string): Pr
     return 'Nome inválido. Pergunte o nome completo do lead antes de cadastrar.';
   }
 
-  // Dedup: se já chamou nos últimos 30s com mesmo estado, pular
-  const dedupeKey = `${phone}:${args.agendado}`;
-  const lastCall = recentCadastro.get(dedupeKey);
-  if (lastCall && Date.now() - lastCall < 30000) {
+  // Dedup: evitar cadastra_lead duplicada na mesma fase (Redis SET NX EX)
+  const { redisClient } = await import('../config/redis');
+  const dedupeKey = `dedup:cadastro:${phone}:${args.agendado}`;
+  const locked = await redisClient.set(dedupeKey, '1', { NX: true, EX: 30 });
+  if (!locked) {
     logger.info('cadastra_lead duplicada ignorada', { phone, agendado: args.agendado });
     return `Dados de ${args.nome_completo} já registrados.`;
   }
-  recentCadastro.set(dedupeKey, Date.now());
 
   try {
     await updateLeadData(phone, {
