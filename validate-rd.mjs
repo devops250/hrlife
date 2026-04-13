@@ -1,6 +1,8 @@
 import pg from 'pg';
 
-const RD_TOKEN = '69a9ff15b7bcbc001d9d6c9a';
+import dotenv from 'dotenv';
+dotenv.config();
+const RD_TOKEN = process.env.RDSTATION_API_TOKEN || '';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://hrlife:hrlife@localhost:5432/hrlife';
 
 const CF_IDS = {

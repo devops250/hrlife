@@ -19,7 +19,7 @@ const TEST_NAME = 'Teste E2E Helena';
 const TEST_EMAIL = 'teste-e2e@cognita.ai';
 
 // Database
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://hrlife:Hr4L1f3_Sdr_2026!@127.0.0.1:5432/hrlife';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://hrlife:hrlife@127.0.0.1:5432/hrlife';
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
 // RD Station — carregado do .env no main()
