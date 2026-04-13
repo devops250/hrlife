@@ -141,7 +141,7 @@ async function processMetaLead(leadgenId: string): Promise<void> {
       source: 'meta_lead',
     });
 
-    logger.info('Meta lead processado via pipeline', { phone, nome, leadgenId });
+    logger.info('Meta lead processado via pipeline', { phone: telefone, nome, leadgenId });
   } catch (error) {
     logger.error('Erro ao processar meta lead', { leadgenId, error });
     await logEvent('error', undefined, {
