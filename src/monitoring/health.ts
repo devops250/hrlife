@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { testConnection } from '../database/client';
-import { redisClient } from '../index';
+import { redisClient } from '../config/redis';
 import { query } from '../database/client';
 import { getLastWebhookTime } from '../database/events.repo';
 import { metrics, getAvgResponseTimeMs, getMetricsSummary } from './metrics';

@@ -10,7 +10,7 @@ import { updateLeadData, findLeadByPhone, type Lead } from '../database/leads.re
 import { logEvent } from '../database/events.repo';
 import { logger } from '../utils/logger';
 import { trackRdSync } from '../monitoring/metrics';
-import { redisClient } from '../index';
+import { redisClient } from '../config/redis';
 // Note: redisClient import needed for mutex lock
 
 /**

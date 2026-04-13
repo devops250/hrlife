@@ -3,7 +3,7 @@ import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { uazapi } from '../whatsapp/uazapi.client';
 import { testConnection } from '../database/client';
-import { redisClient } from '../index';
+import { redisClient } from '../config/redis';
 import { query } from '../database/client';
 import { isBusinessHours } from '../config/schedule';
 import { logEvent, getLastWebhookTime } from '../database/events.repo';

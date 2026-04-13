@@ -9,7 +9,7 @@
  * - Estado consistente entre DB, RD Station e Calendar
  */
 
-import { redisClient } from '../index';
+import { redisClient } from '../config/redis';
 import { normalizePhone } from '../utils/phone';
 import { logger } from '../utils/logger';
 import { findLeadByPhone, createLead, updateLeadName, updateLeadIaMessage } from '../database/leads.repo';

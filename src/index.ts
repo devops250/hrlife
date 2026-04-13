@@ -1,5 +1,5 @@
 import express from 'express';
-import { createClient, RedisClientType } from 'redis';
+import { connectRedis, redisClient } from './config/redis';
 import { env } from './config/env';
 import { logger } from './utils/logger';
 import { pool, testConnection } from './database/client';
@@ -17,7 +17,6 @@ import { startAlertScheduler, sendAlert } from './monitoring/alerts';
 import { startMetricsResetScheduler } from './monitoring/metrics';
 import { startCleanupScheduler } from './database/cleanup';
 
-export let redisClient: RedisClientType;
 
 async function start(): Promise<void> {
   logger.info('Iniciando HR Life SDR...', { port: env.PORT, env: env.NODE_ENV });
@@ -31,10 +30,7 @@ async function start(): Promise<void> {
   logger.info('PostgreSQL conectado');
 
   // Conectar Redis
-  redisClient = createClient({ url: env.REDIS_URL }) as RedisClientType;
-  redisClient.on('error', (err) => logger.error('Redis erro', { error: err }));
-  await redisClient.connect();
-  logger.info('Redis conectado');
+  await connectRedis();
 
   // Rodar migrations
   await runMigrations();

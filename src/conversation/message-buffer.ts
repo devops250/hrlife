@@ -1,4 +1,4 @@
-import { redisClient } from '../index';
+import { redisClient } from '../config/redis';
 import { logger } from '../utils/logger';
 import { uazapi } from '../whatsapp/uazapi.client';
 import { transcribeAudio } from '../whatsapp/audio.service';

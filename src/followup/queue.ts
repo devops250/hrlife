@@ -1,4 +1,4 @@
-import { redisClient } from '../index';
+import { redisClient } from '../config/redis';
 import { logger } from '../utils/logger';
 
 const QUEUE_KEY = 'followup:queue';
