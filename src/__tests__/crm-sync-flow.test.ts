@@ -190,11 +190,12 @@ describe('Fluxo 5: CRM Sync', () => {
     );
   });
 
-  it('5.6 Campos customizados: fumante=Sim vira ["Sim"], CPF e limpo para so digitos', async () => {
+  it('5.6 Campos customizados: fumante=Sim vira ["Sim"], CPF com mascara, data ISO', async () => {
     // syncLeadCreated dispara safeUpdateContact que chama updateContact com custom_fields
     const lead = makeLead({
       smoker: 'Sim, fumo bastante',
       cpf: '123.456.789-09',
+      birth_date: '01/01/1985',
       rd_contact_id: null,
     });
     vi.mocked(findLeadByPhone).mockResolvedValue(lead);
@@ -209,13 +210,14 @@ describe('Fluxo 5: CRM Sync', () => {
     await vi.runAllTimersAsync();
     await promise;
 
-    // updateContact deve ter sido chamado com fumante=["Sim"] e cpf sem pontuacao
+    // updateContact deve ter sido chamado com fumante=["Sim"], cpf com mascara e data ISO
     expect(vi.mocked(updateContact)).toHaveBeenCalledWith(
       'contact-cf',
       expect.objectContaining({
         contact_custom_fields: expect.arrayContaining([
           expect.objectContaining({ value: ['Sim'] }), // fumante
-          expect.objectContaining({ value: '12345678909' }), // cpf limpo
+          expect.objectContaining({ value: '123.456.789-09' }), // cpf com mascara
+          expect.objectContaining({ value: '1985-01-01' }), // data ISO
         ]),
       }),
     );
