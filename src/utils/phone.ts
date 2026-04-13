@@ -1,25 +1,36 @@
-export function normalizePhone(input: string): string {
-  const digits = input.replace(/\D/g, '');
+export function normalizePhone(input: string | null | undefined): string | null {
+  if (!input) return null;
 
-  if (digits.length === 13 && digits.startsWith('55')) {
+  const digits = input.replace(/\D/g, "");
+
+  // Rejeitar vazio, muito curto, ou muito longo (CNPJ tem 14 dígitos)
+  if (digits.length < 10 || digits.length > 13) return null;
+
+  // 13 dígitos com prefixo 55 — formato correto
+  if (digits.length === 13 && digits.startsWith("55")) {
     return digits;
   }
-  if (digits.length === 12 && digits.startsWith('55')) {
-    // 55 + DDD(2) + 8 dígitos — inserir 9
-    return digits.slice(0, 4) + '9' + digits.slice(4);
-  }
-  if (digits.length === 11) {
-    // DDD(2) + 9 dígitos
-    return '55' + digits;
-  }
-  if (digits.length === 10) {
-    // DDD(2) + 8 dígitos — inserir 9
-    return '55' + digits.slice(0, 2) + '9' + digits.slice(2);
-  }
-  if (digits.length === 9) {
-    // Sem DDD — não é possível determinar, retorna como está com prefixo
-    return '55' + digits;
+
+  // 12 dígitos com prefixo 55 — inserir 9 de celular
+  if (digits.length === 12 && digits.startsWith("55")) {
+    return digits.slice(0, 4) + "9" + digits.slice(4);
   }
 
-  return digits;
+  // 12 dígitos começando com 0 (ex: 051995318698) — strip do 0 + adicionar 55
+  if (digits.length === 12 && digits.startsWith("0")) {
+    return "55" + digits.slice(1);
+  }
+
+  // 11 dígitos (DDD + 9 + 8 dígitos)
+  if (digits.length === 11) {
+    return "55" + digits;
+  }
+
+  // 10 dígitos (DDD + 8 dígitos) — inserir 9
+  if (digits.length === 10) {
+    return "55" + digits.slice(0, 2) + "9" + digits.slice(2);
+  }
+
+  // Formato não reconhecido
+  return null;
 }

@@ -48,6 +48,10 @@ export async function whatsappHandler(req: Request, res: Response): Promise<void
     }
 
     const phone = normalizePhone(rawPhone);
+    if (!phone) {
+      logger.warn('Webhook WhatsApp: phone inválido ignorado', { rawPhone });
+      return;
+    }
 
     await logEvent('webhook_received', phone, {
       fromMe: msg.fromMe,

@@ -45,9 +45,9 @@ export interface PipelineResult {
 export async function processIncomingLead(input: IncomingLead): Promise<PipelineResult> {
   const phone = normalizePhone(input.phone);
 
-  if (!phone || phone.length < 10) {
-    logger.warn('Pipeline: telefone inválido', { phone: input.phone, source: input.source });
-    return { success: false, isNew: false, isDuplicate: false, phone, error: 'telefone_invalido' };
+  if (!phone) {
+    logger.warn('Lead pipeline: phone inválido rejeitado', { rawPhone: input.phone, source: input.source });
+    return { success: false, isNew: false, isDuplicate: false, phone: input.phone ?? '', error: 'telefone_invalido' };
   }
 
   // 1. Deduplicação — ignorar se já processou nos últimos 5 min
