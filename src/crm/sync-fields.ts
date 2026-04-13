@@ -1,4 +1,5 @@
 import type { Lead } from '../database/leads.repo';
+import { extractStateFromPhone } from '../utils/ddd-to-state';
 
 // IDs dos campos customizados do RD Station CRM (mapeados do contato real)
 export const RD_CUSTOM_FIELDS = {
@@ -10,6 +11,7 @@ export const RD_CUSTOM_FIELDS = {
   fumante: '69bc628005b2d80026edfa48',
   cpf: '69bd76d25047c3001da71f9f',
   filhos: '69bb46a542ab9c00191305f8',
+  estado: process.env.RD_FIELD_ESTADO ?? '',
 };
 
 export function buildCustomFields(lead: Lead): Array<{ custom_field_id: string; value: string | string[] }> {
@@ -27,6 +29,12 @@ export function buildCustomFields(lead: Lead): Array<{ custom_field_id: string; 
     const cleanCpf = lead.cpf.replace(/[.\-\s]/g, '');
     if (/^\d{11}$/.test(cleanCpf)) {
       fields.push({ custom_field_id: RD_CUSTOM_FIELDS.cpf, value: cleanCpf });
+    }
+  }
+  if (RD_CUSTOM_FIELDS.estado) {
+    const estado = extractStateFromPhone(lead.phone);
+    if (estado) {
+      fields.push({ custom_field_id: RD_CUSTOM_FIELDS.estado, value: estado });
     }
   }
   return fields;
