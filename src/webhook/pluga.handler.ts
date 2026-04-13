@@ -5,6 +5,7 @@
 
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
+import { logEvent } from '../database/events.repo';
 import { processIncomingLead } from './lead-pipeline';
 
 const NAME_FIELDS = ['nome', 'name', 'full_name', 'nome_completo'];
