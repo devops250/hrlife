@@ -7,7 +7,6 @@ import { trackRdSync } from '../monitoring/metrics';
 import { redisClient } from '../config/redis';
 import { resolveContactId, safeUpdateContact, ensureDealScheduled } from './sync-contact';
 
-
 /**
  * Sync básico: cria contato/deal no RD quando o lead chega (antes da coleta completa).
  * Chamado pelo webhook handler ao receber primeira mensagem.
@@ -216,45 +215,9 @@ export async function syncLeadScheduled(lead: Lead): Promise<void> {
       return;
     }
 
-    // Atualizar contato
     await safeUpdateContact(contact._id, freshLead);
     await updateLeadData(lead.phone, { rd_contact_id: contact._id });
-
-    // Buscar deals e mover o primeiro ativo para Agendado (não criar novo)
-    const deals = await findDealsByContact(contact._id);
-    const activeDeal = deals.find((d) =>
-      d.deal_stage?._id !== env.RD_STAGE_SEM_RETORNO && d.deal_stage?._id !== env.RD_STAGE_AGENDADO,
-    );
-
-    if (activeDeal) {
-      await moveDealToStage(activeDeal._id, env.RD_STAGE_AGENDADO);
-      await updateLeadData(lead.phone, { rd_deal_id: activeDeal._id });
-      await logEvent('crm_sync', lead.phone, {
-        action: 'deal_moved_agendado',
-        dealId: activeDeal._id,
-      });
-    } else {
-      // Verificar se já tem deal em Agendado
-      const alreadyScheduled = deals.find((d) => d.deal_stage?._id === env.RD_STAGE_AGENDADO);
-      if (alreadyScheduled) {
-        await updateLeadData(lead.phone, { rd_deal_id: alreadyScheduled._id });
-        await logEvent('crm_sync', lead.phone, {
-          action: 'deal_already_agendado',
-          dealId: alreadyScheduled._id,
-        });
-      } else {
-        const newDeal = await createDeal(
-          leadName || contact.name || 'Lead',
-          lead.phone,
-          env.RD_STAGE_AGENDADO,
-        );
-        await updateLeadData(lead.phone, { rd_deal_id: newDeal._id });
-        await logEvent('crm_sync', lead.phone, {
-          action: 'deal_created_for_scheduled',
-          dealId: newDeal._id,
-        });
-      }
-    }
+    await ensureDealScheduled(contact, leadName, lead.phone);
 
     trackRdSync(true);
     logger.info('CRM sync: lead agendado sincronizado', { phone: lead.phone });
@@ -266,6 +229,3 @@ export async function syncLeadScheduled(lead: Lead): Promise<void> {
     await redisClient.del(lockKey);
   }
 }
-
-
-
