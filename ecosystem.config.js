@@ -8,6 +8,9 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
+      min_uptime: '30s',
+      max_restarts: 10,
+      node_args: '--max-old-space-size=256',
       env: {
         NODE_ENV: 'production',
       },
