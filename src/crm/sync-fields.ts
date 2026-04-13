@@ -38,7 +38,8 @@ export function buildCustomFields(lead: Lead): Array<{ custom_field_id: string; 
     }
   }
   if (lead.filhos) {
-    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.filhos, value: lead.filhos });
+    const filhosValue = lead.filhos.toLowerCase().includes('sim') ? ['Sim'] : ['Não'];
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.filhos, value: filhosValue });
   }
   return fields;
 }

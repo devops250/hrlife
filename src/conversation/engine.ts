@@ -19,7 +19,6 @@ import { findLeadByPhone, updateLeadIaMessage } from '../database/leads.repo';
 import { logEvent, logError } from '../database/events.repo';
 import { uazapi, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
 import { query } from '../database/client';
-import { getSaoPauloNow } from '../config/schedule';
 import { incrementMetric, trackAiLatency } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
 import { notifyProblem } from '../monitoring/alerts';
@@ -53,8 +52,7 @@ export async function processConversation(phone: string, chatInput: string): Pro
 
     // Montar contexto
     const history = await getHistory(phone, 20);
-    const now = getSaoPauloNow();
-    const dateStr = now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const dateStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const systemPrompt = buildSystemPrompt(lead.name || '', dateStr);
 
     const messages: Anthropic.MessageParam[] = [
