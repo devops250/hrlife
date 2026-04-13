@@ -11,6 +11,7 @@ import { processIncomingLead } from './lead-pipeline';
 const NAME_FIELDS = ['nome', 'name', 'full_name', 'nome_completo'];
 const PHONE_FIELDS = ['phone', 'telefone', 'celular', 'tel', 'fone', 'numero', 'contato', 'mobile', 'mobile_number', 'phoneNumber', 'phone_number', 'whatsapp', 'cell'];
 const EMAIL_FIELDS = ['email', 'e-mail', 'email_address'];
+const FILHOS_FIELDS = ['Tem filhos?', 'tem_filhos', 'filhos', 'children', 'tem filhos'];
 
 function extractField(body: Record<string, unknown>, fields: string[]): string {
   for (const field of fields) {
@@ -36,6 +37,7 @@ export async function plugaHandler(req: Request, res: Response): Promise<void> {
     const nome = extractField(body, NAME_FIELDS);
     const telefone = extractField(body, PHONE_FIELDS);
     const email = extractField(body, EMAIL_FIELDS);
+    const filhos = FILHOS_FIELDS.map((f) => body[f]).find((v) => v && typeof v === 'string') as string | undefined;
 
     if (!telefone) {
       logger.warn('Pluga webhook sem telefone', {
@@ -57,6 +59,7 @@ export async function plugaHandler(req: Request, res: Response): Promise<void> {
       name: nome,
       email,
       source: 'pluga',
+      extraData: filhos ? { filhos } : undefined,
     });
   } catch (error) {
     logger.error('Erro no pluga handler', { error });

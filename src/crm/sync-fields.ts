@@ -37,5 +37,8 @@ export function buildCustomFields(lead: Lead): Array<{ custom_field_id: string; 
       fields.push({ custom_field_id: RD_CUSTOM_FIELDS.estado, value: estado });
     }
   }
+  if (lead.filhos) {
+    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.filhos, value: lead.filhos });
+  }
   return fields;
 }

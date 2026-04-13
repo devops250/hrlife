@@ -12,7 +12,7 @@
 import { redisClient } from '../config/redis';
 import { normalizePhone } from '../utils/phone';
 import { logger } from '../utils/logger';
-import { findLeadByPhone, createLead, updateLeadName, updateLeadIaMessage } from '../database/leads.repo';
+import { findLeadByPhone, createLead, updateLeadName, updateLeadIaMessage, updateLeadData } from '../database/leads.repo';
 import { query } from '../database/client';
 import { logEvent, logError } from '../database/events.repo';
 import { uazapi, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
@@ -88,6 +88,11 @@ export async function processIncomingLead(input: IncomingLead): Promise<Pipeline
       await logEvent('lead_created', phone, { source: input.source });
     } else if (input.name && !lead.name) {
       await updateLeadName(phone, input.name);
+    }
+
+    // Salvar campos extras (ex: filhos) se fornecidos
+    if (input.extraData?.filhos) {
+      await updateLeadData(phone, { filhos: input.extraData.filhos });
     }
 
     // 5. Notificar Gabriel (assíncrono, não bloqueia)
