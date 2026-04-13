@@ -89,3 +89,53 @@
    - C2: prompt anti-alucinação — adicionar teste de integração com engine mock
    - C3: mutex de deals duplicados — cobertura do mutex já em 5.4/5.5
 4. **Ampliar cobertura de engine.ts** (God Object, ~400 linhas, 0% cobertura atual)
+
+
+## Semana 2B — Resultado dos Fixes (13/04/2026)
+
+### Fix 1: endHour overflow at 23h [M12] ✅
+- **Arquivo:** src/conversation/tool-executor.ts
+- **Mudança:** parseInt(horario)+1 → Date arithmetic (getTime()+3600000)
+- **Teste 3.5:** ativado e passando (horario=23:00 gera endDateTime=2026-04-21T00:00:00)
+- **Commit:** ebc66e1
+
+### Fix 2: Engine timeout 30s → 60s [A3] ✅
+- **Arquivo:** src/conversation/engine.ts linha 29
+- **Mudança:** TIMEOUT_MS = 30000 → 60000
+- **Commit:** 0576855
+
+### Fix 3: reactivatePausedLeads exportada [TODO 2.4] ✅
+- **Arquivo:** src/followup/scheduler.ts
+- **Mudança:** lógica inline extraída para export async function reactivatePausedLeads()
+- **Teste 2.4:** ativado — verifica reativação de lead pausado há 30+ min
+- **Resultado:** 45 passed, 0 todo, 0 failed
+- **Commit:** 10c1742
+
+### Fix 4: Dedup Map → Redis [M2] ✅
+- **Arquivo:** src/conversation/tool-executor.ts
+- **Mudança:** recentCadastro Map → redisClient.set NX EX 30 (chave: dedup:cadastro:{phone}:{agendado})
+- **Teste 4.3:** atualizado com mock Redis (SET NX retorna null na 2a chamada)
+- **Commit:** f9dbf53
+
+### Fix 5: Fila atômica MULTI/EXEC [A1] ✅
+- **Arquivo:** src/followup/queue.ts
+- **Mudança:** lRange + del separados → multi().lRange().del().exec() atômico
+- **Teste 2.3:** atualizado com mock de multi/exec
+- **Commit:** dc5d535
+
+### Fix 6: Decompor crm/sync.ts [A4] ✅
+- **Resultado:** 373 linhas → 231 linhas (−38%)
+- **Novos arquivos:**
+  - src/crm/sync-fields.ts (33 linhas): RD_CUSTOM_FIELDS + buildCustomFields
+  - src/crm/sync-contact.ts (68 linhas): resolveContactId + safeUpdateContact + ensureDealScheduled
+- **Commits:** d05cb13 (step 1) → a5c3642 (step 2+3) → 281e50d (final)
+- **Testes:** 6/6 passando em crm-sync-flow após cada passo
+
+### Resumo Final
+| Métrica | Antes (Semana 2A) | Depois (Semana 2B) |
+|---------|------------------|--------------------|
+| Testes passando | 43 (2 todo) | 45 (0 todo) |
+| sync.ts linhas | 373 | 231 |
+| Dedup cadastro | Map (perde no restart) | Redis SET NX |
+| Fila followup | 2 operações separadas | MULTI/EXEC atômico |
+| Engine timeout | 30s | 60s |
