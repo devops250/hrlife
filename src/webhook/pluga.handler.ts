@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 import { processIncomingLead } from './lead-pipeline';
 
 const NAME_FIELDS = ['nome', 'name', 'full_name', 'nome_completo'];
-const PHONE_FIELDS = ['telefone', 'phone', 'celular', 'whatsapp', 'mobile', 'phone_number'];
+const PHONE_FIELDS = ['phone', 'telefone', 'celular', 'tel', 'fone', 'numero', 'contato', 'mobile', 'mobile_number', 'phoneNumber', 'phone_number', 'whatsapp', 'cell'];
 const EMAIL_FIELDS = ['email', 'e-mail', 'email_address'];
 
 function extractField(body: Record<string, unknown>, fields: string[]): string {
@@ -37,7 +37,17 @@ export async function plugaHandler(req: Request, res: Response): Promise<void> {
     const email = extractField(body, EMAIL_FIELDS);
 
     if (!telefone) {
-      logger.warn('Pluga webhook sem telefone', { keys: Object.keys(body) });
+      logger.warn('Pluga webhook sem telefone', {
+        keys: Object.keys(body),
+        payload: JSON.stringify(body).substring(0, 500),
+      });
+      await logEvent('webhook_received', undefined, {
+        handler: 'pluga',
+        action: 'no_phone',
+        fields_received: Object.keys(body),
+        nome: nome || undefined,
+        email: email || undefined,
+      });
       return;
     }
 
