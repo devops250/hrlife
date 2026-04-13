@@ -29,3 +29,21 @@
 - [x] Item 3: DATABASE_URL fallback removido de test-e2e.ts
 - [x] Item 4: variável phone dead code removida de meta-leads.handler.ts (M10 confirmado como dead code)
 - [x] Item 5: validação final
+
+
+
+## Remediação Complementar — Sessão 2 (13/04/2026)
+
+Problemas residuais do commit b4578c0 corrigidos:
+
+- [x] meta-leads.handler.ts:144 — shorthand `phone` sem declaração causava erro TSC (substituído por `phone: telefone`)
+- [x] validate-rd.mjs — fallback hardcoded `hrlife:hrlife` ainda presente (removido, adicionado process.exit(1))
+- [x] vitest.config.ts criado — excluir dist/__tests__/*.js das suites (CJS incompatível com Vitest)
+
+### Estado final após remediação completa:
+- build: OK (tsc --noEmit EXIT:0)
+- testes: 3 passed / 19 passed (0 failed)
+- credenciais hardcoded: 0
+- dependências circulares (redisClient from index): 0
+- process.env fora de config/env.ts: 0
+- dead code _getPeriodFilter_OLD: 0
