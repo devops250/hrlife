@@ -17,13 +17,13 @@ async function ensureChatwootIds(phone: string, name: string): Promise<{ contact
       const created = await createContact(phone, name || lead.name || 'Lead');
       contactId = created.id;
     }
-    await updateLeadData(phone, { chatwoot_contact_id: contactId } as any);
+    await updateLeadData(phone, { chatwoot_contact_id: contactId });
   }
 
   if (!conversationId) {
     const conv = await createConversation(contactId);
     conversationId = conv.id;
-    await updateLeadData(phone, { chatwoot_conversation_id: conversationId } as any);
+    await updateLeadData(phone, { chatwoot_conversation_id: conversationId });
   }
 
   return { contactId, conversationId };
