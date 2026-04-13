@@ -11,6 +11,7 @@ import { logEvent } from '../database/events.repo';
 import { logger } from '../utils/logger';
 import { trackRdSync } from '../monitoring/metrics';
 import { redisClient } from '../index';
+// Note: redisClient import needed for mutex lock
 
 /**
  * Busca o contact_id após criar um deal (o deal cria o contato junto).
@@ -328,7 +329,11 @@ function buildCustomFields(lead: Lead): Array<{ custom_field_id: string; value: 
     fields.push({ custom_field_id: RD_CUSTOM_FIELDS.fumante, value: smokerValue });
   }
   if (lead.cpf) {
-    fields.push({ custom_field_id: RD_CUSTOM_FIELDS.cpf, value: lead.cpf });
+    // Limpar CPF: remover pontos, traços e espaços. Ignorar se não é numérico (ex: "não")
+    const cleanCpf = lead.cpf.replace(/[\.\-\s]/g, '');
+    if (/^\d{11}$/.test(cleanCpf)) {
+      fields.push({ custom_field_id: RD_CUSTOM_FIELDS.cpf, value: cleanCpf });
+    }
   }
 
   return fields;
