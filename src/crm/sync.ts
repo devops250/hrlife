@@ -1,31 +1,12 @@
 import { env } from '../config/env';
-import {
-  findContactByPhone,
-  createDeal,
-  updateContact,
-  findDealsByContact,
-  moveDealToStage,
-} from './rdstation.service';
+import { findContactByPhone, createDeal, findDealsByContact, moveDealToStage } from './rdstation.service';
 import { updateLeadData, findLeadByPhone, type Lead } from '../database/leads.repo';
 import { logEvent } from '../database/events.repo';
 import { logger } from '../utils/logger';
 import { trackRdSync } from '../monitoring/metrics';
 import { redisClient } from '../config/redis';
-import { buildCustomFields } from './sync-fields';
+import { resolveContactId, safeUpdateContact, ensureDealScheduled } from './sync-contact';
 
-/**
- * Busca o contact_id após criar um deal (o deal cria o contato junto).
- * Espera 1s para o RD Station processar e depois busca.
- */
-async function resolveContactId(phone: string): Promise<string | null> {
-  await new Promise((r) => setTimeout(r, 1000));
-  try {
-    const contact = await findContactByPhone(phone);
-    return contact?._id || null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Sync básico: cria contato/deal no RD quando o lead chega (antes da coleta completa).
@@ -287,35 +268,4 @@ export async function syncLeadScheduled(lead: Lead): Promise<void> {
 }
 
 
-/**
- * Atualizar contato no RD Station — best-effort, não bloqueia o fluxo.
- * Preenche campos customizados individualmente + notas como backup.
- */
-async function safeUpdateContact(contactId: string, lead: Lead): Promise<void> {
-  try {
-    const data: Record<string, unknown> = {};
-    if (lead.name) data.name = lead.name;
 
-    // Preencher campos customizados individualmente
-    const customFields = buildCustomFields(lead);
-    if (customFields.length > 0) {
-      data.contact_custom_fields = customFields;
-    }
-
-    if (Object.keys(data).length === 0) return;
-
-    await updateContact(contactId, data);
-
-    await logEvent('crm_sync', lead.phone, {
-      action: 'custom_fields_updated',
-      fieldsCount: customFields.length,
-    });
-  } catch (error) {
-    logger.warn('updateContact falhou (best-effort, continuando)', { contactId, error });
-    await logEvent('crm_sync', lead.phone, {
-      action: 'update_contact_failed_best_effort',
-      contactId,
-      error: String(error),
-    });
-  }
-}
