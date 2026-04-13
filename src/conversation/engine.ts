@@ -26,7 +26,7 @@ import { notifyProblem } from '../monitoring/alerts';
 
 const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
-const TIMEOUT_MS = 30000;
+const TIMEOUT_MS = 60000;
 const TIMEOUT_MESSAGE = 'Desculpe, estou com lentidão. Pode repetir sua mensagem?';
 const FALLBACK_MESSAGE = 'Nosso sistema está temporariamente indisponível. Um de nossos especialistas vai entrar em contato com você em breve. Pedimos desculpas pelo inconveniente! 🙏';
 
