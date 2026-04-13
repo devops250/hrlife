@@ -46,4 +46,6 @@ export const env = {
   CHATWOOT_API_TOKEN: process.env.CHATWOOT_API_TOKEN || '',
   CHATWOOT_ACCOUNT_ID: process.env.CHATWOOT_ACCOUNT_ID || '2',
   CHATWOOT_INBOX_ID: process.env.CHATWOOT_INBOX_ID || '2',
+  DASHBOARD_USER: process.env.DASHBOARD_USER || 'admin',
+  DASHBOARD_PASS: process.env.DASHBOARD_PASS || '',
 } as const;

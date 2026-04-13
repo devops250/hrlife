@@ -6,6 +6,7 @@ import { pool, testConnection } from './database/client';
 import { runMigrations } from './database/migrate';
 import { healthCheck } from './monitoring/health';
 import { dashboardHandler, dashboardPage } from './monitoring/dashboard';
+import { dashboardAuth } from './utils/auth';
 import { handleOAuthStart, handleOAuthCallback } from './scheduling/google-oauth';
 import { whatsappHandler } from './webhook/whatsapp.handler';
 import { formHandler } from './webhook/form.handler';
@@ -45,8 +46,8 @@ async function start(): Promise<void> {
 
   // Routes
   app.get('/health', healthCheck);
-  app.get('/dashboard', dashboardPage);
-  app.get('/dashboard/api', dashboardHandler);
+  app.get('/dashboard', dashboardAuth, dashboardPage);
+  app.get('/dashboard/api', dashboardAuth, dashboardHandler);
 
   // Google Calendar OAuth2
   app.get('/oauth2/google', handleOAuthStart);

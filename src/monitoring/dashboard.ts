@@ -14,7 +14,17 @@ export function dashboardPage(_req: Request, res: Response): void {
   res.type('html').send(dashboardHtml);
 }
 
+const VALID_PERIODS: Record<string, string> = {
+  'today': "created_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'",
+  '7d': "created_at >= NOW() - INTERVAL '7 days'",
+  '30d': "created_at >= NOW() - INTERVAL '30 days'",
+};
+
 function getPeriodFilter(period: string): string {
+  return VALID_PERIODS[period] || VALID_PERIODS['7d'];
+}
+
+function _getPeriodFilter_OLD(period: string): string {
   switch (period) {
     case 'today': return "created_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'";
     case '30d': return "created_at >= NOW() - INTERVAL '30 days'";
