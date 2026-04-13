@@ -21,3 +21,11 @@
 - Cobertura de testes ~5% — precisa de testes para engine, pipeline, sync
 - Dashboard HTML sem autenticação client-side (apenas API protegida)
 - `_getPeriodFilter_OLD` ficou no dashboard.ts (dead code do refactor)
+
+## Remediação (13/04/2026)
+
+- [x] Item 1: stages.test.ts corrigido com async/await
+- [x] Item 2: _getPeriodFilter_OLD removido de dashboard.ts
+- [x] Item 3: DATABASE_URL fallback removido de test-e2e.ts
+- [x] Item 4: variável phone dead code removida de meta-leads.handler.ts (M10 confirmado como dead code)
+- [x] Item 5: validação final

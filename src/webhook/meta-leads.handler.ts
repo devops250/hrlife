@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { normalizePhone } from '../utils/phone';
 import { logger } from '../utils/logger';
 import { logEvent } from '../database/events.repo';
 import { incrementMetric } from '../monitoring/metrics';
@@ -133,8 +132,6 @@ async function processMetaLead(leadgenId: string): Promise<void> {
       });
       return;
     }
-
-    const phone = normalizePhone(telefone);
 
     // Delegar ao Pipeline (cuida de tudo: criar, enviar msg, sync CRM, notificar)
     await processIncomingLead({

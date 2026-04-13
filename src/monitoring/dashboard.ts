@@ -24,15 +24,6 @@ function getPeriodFilter(period: string): string {
   return VALID_PERIODS[period] || VALID_PERIODS['7d'];
 }
 
-function _getPeriodFilter_OLD(period: string): string {
-  switch (period) {
-    case 'today': return "created_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'";
-    case '30d': return "created_at >= NOW() - INTERVAL '30 days'";
-    case '7d':
-    default: return "created_at >= NOW() - INTERVAL '7 days'";
-  }
-}
-
 export async function dashboardHandler(req: Request, res: Response): Promise<void> {
   try {
     const period = (req.query.period as string) || '7d';

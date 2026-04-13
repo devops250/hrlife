@@ -33,43 +33,43 @@ function makeLead(overrides: Partial<Lead> = {}): Lead {
 }
 
 describe('getNextStage', () => {
-  it('retorna stage 1 quando followup_status=0 e 31min sem resposta', () => {
+  it('retorna stage 1 quando followup_status=0 e 31min sem resposta', async () => {
     const lead = makeLead({ followup_status: 0, last_ia_message: new Date(Date.now() - 31 * 60 * 1000) });
-    const result = getNextStage(lead);
+    const result = await getNextStage(lead);
     expect(result).not.toBeNull();
     expect(result!.stage).toBe(1);
   });
 
-  it('retorna null quando followup_status=0 e apenas 29min', () => {
+  it('retorna null quando followup_status=0 e apenas 29min', async () => {
     const lead = makeLead({ followup_status: 0, last_ia_message: new Date(Date.now() - 29 * 60 * 1000) });
-    expect(getNextStage(lead)).toBeNull();
+    expect(await getNextStage(lead)).toBeNull();
   });
 
-  it('retorna stage 2 quando followup_status=1 e 121min', () => {
+  it('retorna stage 2 quando followup_status=1 e 121min', async () => {
     const lead = makeLead({ followup_status: 1, last_ia_message: new Date(Date.now() - 121 * 60 * 1000) });
-    const result = getNextStage(lead);
+    const result = await getNextStage(lead);
     expect(result).not.toBeNull();
     expect(result!.stage).toBe(2);
   });
 
-  it('retorna null quando lead está agendado (scheduled=true)', () => {
+  it('retorna null quando lead está agendado (scheduled=true)', async () => {
     const lead = makeLead({ scheduled: true, followup_status: 0, last_ia_message: new Date(Date.now() - 60 * 60 * 1000) });
-    expect(getNextStage(lead)).toBeNull();
+    expect(await getNextStage(lead)).toBeNull();
   });
 
-  it('retorna null quando followup_status >= 4', () => {
+  it('retorna null quando followup_status >= 4', async () => {
     const lead = makeLead({ followup_status: 4 });
-    expect(getNextStage(lead)).toBeNull();
+    expect(await getNextStage(lead)).toBeNull();
   });
 
-  it('retorna null quando last_ia_message é null', () => {
+  it('retorna null quando last_ia_message é null', async () => {
     const lead = makeLead({ last_ia_message: null });
-    expect(getNextStage(lead)).toBeNull();
+    expect(await getNextStage(lead)).toBeNull();
   });
 
-  it('inclui nome do lead na mensagem', () => {
+  it('inclui nome do lead na mensagem', async () => {
     const lead = makeLead({ name: 'João', followup_status: 0, last_ia_message: new Date(Date.now() - 31 * 60 * 1000) });
-    const result = getNextStage(lead);
+    const result = await getNextStage(lead);
     expect(result!.message).toContain('João');
   });
 });

@@ -19,7 +19,11 @@ const TEST_NAME = 'Teste E2E Helena';
 const TEST_EMAIL = 'teste-e2e@cognita.ai';
 
 // Database
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://hrlife:hrlife@127.0.0.1:5432/hrlife';
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('DATABASE_URL não configurado. Rode com: DATABASE_URL=... npx tsx scripts/test-e2e.ts');
+  process.exit(1);
+}
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
 // RD Station — carregado do .env no main()
