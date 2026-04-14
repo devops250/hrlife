@@ -97,6 +97,14 @@ export async function processFollowups(): Promise<void> {
       const queuedItems = await getQueuedFollowups();
       for (const item of queuedItems) {
         try {
+          // Re-check: lead pode ter sido agendado/respondido enquanto estava na fila
+          const freshLead = await findLeadByPhone(item.phone);
+          if (!freshLead || freshLead.scheduled || freshLead.has_lead_replied || freshLead.status !== 'active') {
+            logger.info('Follow-up da fila pulado (lead mudou de status)', { phone: item.phone, status: freshLead?.status });
+            skipped++;
+            continue;
+          }
+
           await uazapi.sendText(item.phone, item.message);
           await query(
             'UPDATE leads SET followup_status = $1, last_ia_message = NOW(), updated_at = NOW() WHERE phone = $2',
