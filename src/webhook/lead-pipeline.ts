@@ -12,7 +12,7 @@
 import { redisClient } from '../config/redis';
 import { normalizePhone } from '../utils/phone';
 import { logger } from '../utils/logger';
-import { findLeadByPhone, createLead, updateLeadName, updateLeadIaMessage, updateLeadData } from '../database/leads.repo';
+import { findLeadByPhone, createLead, updateLeadName, updateLeadIaMessage, updateLeadData, type Lead } from '../database/leads.repo';
 import { query } from '../database/client';
 import { logEvent, logError } from '../database/events.repo';
 import { uazapi, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
@@ -145,7 +145,7 @@ export async function processIncomingLead(input: IncomingLead): Promise<Pipeline
 /**
  * CRM Sync com retry — 3 tentativas com backoff exponencial.
  */
-async function syncWithRetry(phone: string, lead: { phone: string; name: string | null; rd_contact_id: string | null }, isNew: boolean, source: string): Promise<void> {
+async function syncWithRetry(phone: string, lead: Lead, isNew: boolean, source: string): Promise<void> {
   const maxRetries = 3;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -154,7 +154,7 @@ async function syncWithRetry(phone: string, lead: { phone: string; name: string 
         if (source === 'whatsapp') {
           await syncLeadBasic(phone);
         } else {
-          await syncLeadCreated(lead as any);
+          await syncLeadCreated(lead);
         }
       }
       return; // sucesso
