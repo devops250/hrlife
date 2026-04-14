@@ -22,17 +22,30 @@ export interface QueuedFollowup {
   queuedAt: string;
 }
 
-export async function getQueuedFollowups(): Promise<QueuedFollowup[]> {
+/**
+ * Recupera itens da fila e deleta apenas os retornados.
+ * @param limit — máximo de itens a retornar (0 = todos)
+ */
+export async function getQueuedFollowups(limit = 0): Promise<QueuedFollowup[]> {
   const keys = await redisClient.keys(`${PREFIX}*`);
   if (keys.length === 0) return [];
 
+  const keysToProcess = limit > 0 ? keys.slice(0, limit) : keys;
   const items: QueuedFollowup[] = [];
-  for (const key of keys) {
+
+  for (const key of keysToProcess) {
     const value = await redisClient.get(key);
     if (value) {
       items.push(JSON.parse(value));
       await redisClient.del(key);
     }
+  }
+
+  if (limit > 0 && keys.length > limit) {
+    logger.info('Fila parcialmente drenada (rate limit)', {
+      processed: keysToProcess.length,
+      remaining: keys.length - keysToProcess.length,
+    });
   }
 
   return items;

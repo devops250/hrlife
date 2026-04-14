@@ -13,6 +13,7 @@ import { findLeadByPhone, type Lead } from '../database/leads.repo';
 
 const BATCH_SIZE = 10;
 const DELAY_BETWEEN_SENDS_MS = 2000;
+const MAX_QUEUE_PER_CYCLE = 5;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -94,7 +95,7 @@ export async function processFollowups(): Promise<void> {
 
     // 1. Processar fila noturna primeiro (se estiver em horário comercial)
     if (isBusinessHours()) {
-      const queuedItems = await getQueuedFollowups();
+      const queuedItems = await getQueuedFollowups(MAX_QUEUE_PER_CYCLE);
       for (const item of queuedItems) {
         try {
           // Re-check: lead pode ter sido agendado/respondido enquanto estava na fila

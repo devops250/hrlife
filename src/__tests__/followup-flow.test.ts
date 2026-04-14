@@ -223,4 +223,33 @@ describe('Fluxo 2: Follow-up', () => {
     // sendText chamado exatamente 1x — loop parou apos o erro
     expect(vi.mocked(uazapi.sendText)).toHaveBeenCalledTimes(1);
   });
+
+  it('2.7 getQueuedFollowups com limit processa apenas N itens, restantes ficam no Redis', async () => {
+    // Simular 3 keys no Redis, limit=2
+    vi.mocked(redisClient.keys).mockResolvedValueOnce([
+      'followup:pending:5511111111111',
+      'followup:pending:5522222222222',
+      'followup:pending:5533333333333',
+    ]);
+
+    const item1 = JSON.stringify({ phone: '5511111111111', stage: 2, message: 'msg1', queuedAt: new Date().toISOString() });
+    const item2 = JSON.stringify({ phone: '5522222222222', stage: 2, message: 'msg2', queuedAt: new Date().toISOString() });
+
+    vi.mocked(redisClient.get)
+      .mockResolvedValueOnce(item1)
+      .mockResolvedValueOnce(item2);
+    vi.mocked(redisClient.del).mockResolvedValue(1);
+
+    const items = await getQueuedFollowups(2);
+
+    // Deve retornar apenas 2 itens
+    expect(items).toHaveLength(2);
+    expect(items[0].phone).toBe('5511111111111');
+    expect(items[1].phone).toBe('5522222222222');
+
+    // Del chamado apenas 2x (não 3)
+    expect(vi.mocked(redisClient.del)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(redisClient.del)).not.toHaveBeenCalledWith('followup:pending:5533333333333');
+  });
+
 });
