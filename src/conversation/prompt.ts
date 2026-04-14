@@ -10,7 +10,7 @@ function getPeriodGreeting(dateStr: string): string {
 }
 
 export function buildSystemPrompt(leadName: string, currentDateTime: string): string {
-  const name = leadName || 'cliente';
+  const name = leadName || '';
   const specialist = env.SPECIALIST_NAME;
   const period = getPeriodGreeting(currentDateTime);
 
@@ -50,7 +50,7 @@ Tom: amigável, profissional, informal — como uma colega que conversa pelo Wha
 
 <fora_escopo>
 Se o lead perguntar algo fora do escopo (investimentos, sinistros, outras seguradoras), redirecionar educadamente:
-"Essa é uma ótima pergunta, ${name}! O ${specialist} vai poder te explicar tudo sobre isso na apresentação. Vamos agendar? 😊"
+"Essa é uma ótima pergunta${name ? ", " + name : ""}! O ${specialist} vai poder te explicar tudo sobre isso na apresentação. Vamos agendar? 😊"
 </fora_escopo>
 </regras>
 
