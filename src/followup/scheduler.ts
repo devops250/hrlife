@@ -151,9 +151,13 @@ export async function processFollowups(): Promise<void> {
         continue;
       }
 
-      // Fora do horário comercial → enfileirar
+      // Fora do horário comercial → enfileirar + atualizar status (evita re-enqueue)
       if (!isBusinessHours()) {
         await enqueueForFollowup(lead.phone, next.stage, next.message);
+        await query(
+          'UPDATE leads SET followup_status = $1, last_ia_message = NOW(), updated_at = NOW() WHERE phone = $2',
+          [next.stage, lead.phone],
+        );
         queued++;
         continue;
       }
