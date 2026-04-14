@@ -13,6 +13,7 @@ vi.mock('../config/redis', () => ({
     lRange: vi.fn().mockResolvedValue([]),
     del: vi.fn().mockResolvedValue(1),
     set: vi.fn().mockResolvedValue('OK'),
+    keys: vi.fn().mockResolvedValue([]),
     get: vi.fn().mockResolvedValue(null),
     multi: vi.fn().mockReturnValue({
       lRange: vi.fn().mockReturnThis(),
@@ -133,38 +134,31 @@ describe('Fluxo 2: Follow-up', () => {
     expect(next).toBeNull();
   });
 
-  it('2.3 enqueueForFollowup salva, getQueuedFollowups recupera atomicamente (MULTI/EXEC)', async () => {
-    const queueItem = JSON.stringify({
-      phone: '5511999999999',
-      stage: 1,
-      message: 'Oi, tudo bem?',
-      queuedAt: new Date().toISOString(),
-    });
-
-    vi.mocked(redisClient.rPush).mockResolvedValueOnce(1);
-
-    // Mock multi().lRange().del().exec() — node-redis v5 retorna [T1, T2]
-    const mockMulti = {
-      lRange: vi.fn().mockReturnThis(),
-      del: vi.fn().mockReturnThis(),
-      exec: vi.fn().mockResolvedValueOnce([[queueItem], 1]),
-    };
-    vi.mocked(redisClient.multi).mockReturnValueOnce(mockMulti as ReturnType<typeof redisClient.multi>);
+  it('2.3 enqueueForFollowup usa SET NX (dedup), getQueuedFollowups recupera e limpa', async () => {
+    // enqueue usa SET NX — grava apenas se não existir
+    vi.mocked(redisClient.set).mockResolvedValueOnce('OK');
 
     await enqueueForFollowup('5511999999999', 1, 'Oi, tudo bem?');
 
-    expect(vi.mocked(redisClient.rPush)).toHaveBeenCalledWith(
-      'followup:queue',
+    expect(vi.mocked(redisClient.set)).toHaveBeenCalledWith(
+      'followup:pending:5511999999999',
       expect.stringContaining('"phone":"5511999999999"'),
+      { NX: true, EX: 43200 },
     );
+
+    // getQueuedFollowups usa keys + get + del
+    vi.mocked(redisClient.keys).mockResolvedValueOnce(['followup:pending:5511999999999']);
+    vi.mocked(redisClient.get).mockResolvedValueOnce(JSON.stringify({
+      phone: '5511999999999', stage: 1, message: 'Oi, tudo bem?', queuedAt: new Date().toISOString(),
+    }));
+    vi.mocked(redisClient.del).mockResolvedValueOnce(1);
 
     const items = await getQueuedFollowups();
 
     expect(items).toHaveLength(1);
     expect(items[0].phone).toBe('5511999999999');
     expect(items[0].stage).toBe(1);
-    expect(items[0].message).toBe('Oi, tudo bem?');
-    expect(mockMulti.exec).toHaveBeenCalled();
+    expect(vi.mocked(redisClient.del)).toHaveBeenCalledWith('followup:pending:5511999999999');
   });
 
   it('2.4 Lead pausado ha 30+ min e reativado automaticamente [fix TODO 2.4]', async () => {
