@@ -203,8 +203,9 @@ describe('Fluxo 2: Follow-up', () => {
     // Sem circuit breaker ativo
     vi.mocked(redisClient.get).mockResolvedValue(null);
 
-    // mockQuery: reactivate(SELECT) + SELECT leads + findLeadByPhone + alreadySentStage
+    // mockQuery: retryPending + reactivate(SELECT) + SELECT leads + findLeadByPhone + alreadySentStage
     mockQuery
+      .mockResolvedValueOnce({ rows: [] })      // retryPendingFirstMessages
       .mockResolvedValueOnce({ rows: [] })      // reactivatePausedLeads
       .mockResolvedValueOnce({ rows: [lead] })  // SELECT active leads
       .mockResolvedValueOnce({ rows: [lead] })  // findLeadByPhone

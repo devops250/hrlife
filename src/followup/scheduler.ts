@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { isBusinessHours } from '../config/schedule';
 import { getNextStage } from './stages';
 import { enqueueForFollowup, getQueuedFollowups } from './queue';
+import { generateFirstMessage } from '../conversation/first-message';
 import { uazapi } from '../whatsapp/uazapi.client';
 import { logEvent, logError } from '../database/events.repo';
 import { moveDealToStage } from '../crm/rdstation.service';
@@ -60,6 +61,46 @@ export async function reactivatePausedLeads(): Promise<number> {
   return count;
 }
 
+/**
+ * Retry de primeira mensagem para leads criados durante downtime do WhatsApp.
+ * Busca leads das últimas 12h que nunca receberam mensagem (last_ia_message IS NULL).
+ */
+async function retryPendingFirstMessages(): Promise<number> {
+  const result = await query(
+    `SELECT phone, name, source FROM leads
+     WHERE created_at > NOW() - INTERVAL '12 hours'
+       AND last_ia_message IS NULL
+       AND status = 'active'
+       AND source != 'whatsapp'
+     LIMIT 5`,
+  );
+
+  let retried = 0;
+  for (const lead of result.rows as Array<{ phone: string; name: string | null; source: string }>) {
+    try {
+      const msg = generateFirstMessage(lead.name || 'Olá');
+      await uazapi.sendText(lead.phone, msg);
+      await query('UPDATE leads SET last_ia_message = NOW(), updated_at = NOW() WHERE phone = $1', [lead.phone]);
+      await query('INSERT INTO followup_log (phone, stage, message) VALUES ($1, 0, $2)', [lead.phone, msg]);
+      await logEvent('first_message_sent', lead.phone, { source: lead.source, retry: true });
+      logger.info('Primeira mensagem reenviada (retry)', { phone: lead.phone });
+      retried++;
+      await sleep(DELAY_BETWEEN_SENDS_MS);
+    } catch (error) {
+      if (error instanceof NotOnWhatsAppError) {
+        await query("UPDATE leads SET status = 'invalid_phone', updated_at = NOW() WHERE phone = $1", [lead.phone]);
+        await logEvent('lead_invalid_phone', lead.phone, { source: lead.source, retry: true });
+      } else if (error instanceof WhatsAppDisconnectedError) {
+        logger.warn('WhatsApp ainda desconectado durante retry — parando', { phone: lead.phone });
+        break;
+      } else {
+        logger.error('Retry primeira mensagem falhou', { phone: lead.phone, error });
+      }
+    }
+  }
+  return retried;
+}
+
 export async function processFollowups(): Promise<void> {
   if (isRunning) {
     logger.warn('Follow-up scheduler já está rodando (memory lock), pulando');
@@ -92,6 +133,9 @@ export async function processFollowups(): Promise<void> {
 
     // 0. Reativar leads pausados há 30+ min (Rodrigo não respondeu mais)
     const reactivated = await reactivatePausedLeads();
+
+    // 0.5 Retry de primeira mensagem para leads criados durante downtime
+    const retried = await retryPendingFirstMessages();
 
     // 1. Processar fila noturna primeiro (se estiver em horário comercial)
     if (isBusinessHours()) {
@@ -255,6 +299,7 @@ export async function processFollowups(): Promise<void> {
       skipped,
       closed,
       reactivated,
+      retried,
     });
   } catch (error) {
     logger.error('Erro no follow-up scheduler', { error });
