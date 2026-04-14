@@ -90,9 +90,12 @@ export async function processIncomingLead(input: IncomingLead): Promise<Pipeline
       await updateLeadName(phone, input.name);
     }
 
-    // Salvar campos extras (ex: filhos) se fornecidos
+    // Salvar campos extras (ex: filhos, email) se fornecidos
     if (input.extraData?.filhos) {
       await updateLeadData(phone, { filhos: input.extraData.filhos });
+    }
+    if (input.email) {
+      await updateLeadData(phone, { email: input.email });
     }
 
     // 5. Notificar Gabriel (assíncrono, não bloqueia)
