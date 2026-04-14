@@ -2,7 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'hrlife-sdr',
-      script: 'dist/index.js',
+      script: 'scripts/build-and-start.sh',
+      interpreter: '/bin/bash',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -10,7 +11,6 @@ module.exports = {
       max_memory_restart: '512M',
       min_uptime: '30s',
       max_restarts: 10,
-      node_args: '--max-old-space-size=256',
       env: {
         NODE_ENV: 'production',
       },

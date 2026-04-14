@@ -1,4 +1,5 @@
 import express from 'express';
+import { execSync } from 'child_process';
 import { connectRedis, redisClient } from './config/redis';
 import { env } from './config/env';
 import { logger } from './utils/logger';
@@ -18,8 +19,28 @@ import { startMetricsResetScheduler } from './monitoring/metrics';
 import { startCleanupScheduler } from './database/cleanup';
 
 
+function checkDistFreshness(): void {
+  try {
+    const staleFiles = execSync(
+      'find src/ -name "*.ts" -not -path "*__tests__*" -newer dist/index.js 2>/dev/null | head -5',
+      { encoding: 'utf-8', cwd: '/opt/hrlife-sdr' }
+    ).trim();
+
+    if (staleFiles) {
+      logger.error('ALERTA: dist/ pode estar desatualizado. Arquivos mais recentes que dist/index.js:', {
+        files: staleFiles.split('\n'),
+      });
+    }
+  } catch {
+    // Se o find falhar, não bloquear o start
+  }
+}
+
 async function start(): Promise<void> {
   logger.info('Iniciando HR Life SDR...', { port: env.PORT, env: env.NODE_ENV });
+
+  // Verificar se dist está atualizado
+  checkDistFreshness();
 
   // Testar Postgres
   const pgOk = await testConnection();
