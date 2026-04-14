@@ -68,6 +68,7 @@ async function execCadastraLead(args: Record<string, string>, phone: string): Pr
       profession: args.profissao || undefined,
       income: args.renda_mensal || undefined,
       smoker: args.fumante || undefined,
+      email: args.email || undefined,
       scheduled: args.agendado === 'true',
     });
 

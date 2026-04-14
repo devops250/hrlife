@@ -45,6 +45,17 @@ export async function safeUpdateContact(contactId: string, lead: Lead): Promise<
     }
   }
 
+  // Enviar email (campo nativo do RD Station)
+  if (lead.email) {
+    try {
+      await updateContact(contactId, { emails: [{ email: lead.email }] });
+      succeeded++;
+    } catch (err) {
+      failed++;
+      logger.warn('RD update email failed', { phone: lead.phone, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   // Enviar cada campo customizado individualmente
   for (const field of fields) {
     const fieldName = FIELD_NAMES[field.custom_field_id] || field.custom_field_id;

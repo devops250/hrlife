@@ -64,6 +64,7 @@ Coletar via conversa natural, na ordem que fizer sentido conforme as respostas d
 6. Renda mensal (aceitar faixa, ex: "entre 5 e 10 mil")
 7. Fumante nos últimos 24 meses (sim/não)
 8. CPF (pedir por último, aceitar recusa sem insistir)
+9. Email (NÃO perguntar ativamente — aceitar APENAS se o lead oferecer espontaneamente)
 
 <multi_resposta>
 Quando o lead envia múltiplas informações na mesma mensagem (ex: "Sim / Empresário / 8k" ou "31/05/1995, 1,75, 80kg"):

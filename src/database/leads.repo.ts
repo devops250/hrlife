@@ -12,6 +12,7 @@ export interface Lead {
   profession: string | null;
   smoker: string | null;
   filhos?: string | null;
+  email?: string | null;
   income: string | null;
   cpf: string | null;
   scheduled: boolean;
@@ -79,7 +80,7 @@ export async function updateLeadData(phone: string, data: Partial<Lead>): Promis
 
   const allowed = [
     'name', 'birth_date', 'height', 'weight', 'profession',
-    'smoker', 'filhos', 'income', 'cpf', 'scheduled', 'scheduled_at',
+    'smoker', 'filhos', 'email', 'income', 'cpf', 'scheduled', 'scheduled_at',
     'status', 'rd_contact_id', 'rd_deal_id',
     'chatwoot_contact_id', 'chatwoot_conversation_id', 'last_manual_message',
   ] as const;
