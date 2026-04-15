@@ -209,22 +209,24 @@ describe('Fluxo 5: CRM Sync', () => {
     const promise = syncLeadCreated(lead);
     await vi.runAllTimersAsync();
     await promise;
-
-    // Agora updateContact e chamado individualmente por campo
+    // safeUpdateContact envia tudo em um unico batch (RD substitui array inteiro no PUT)
     const calls = vi.mocked(updateContact).mock.calls;
-    const payloads = calls.map(c => c[1]);
+    expect(calls.length).toBeGreaterThanOrEqual(1);
 
-    // Nome enviado separado
-    expect(payloads).toContainEqual({ name: 'Joao Silva' });
+    const batchPayload = calls[0][1] as Record<string, unknown>;
 
-    // Cada campo customizado enviado individualmente
-    const cfValues = payloads
-      .filter(p => p.contact_custom_fields)
-      .map(p => (p.contact_custom_fields as Array<{ value: unknown }>)[0].value);
+    // Nome incluso no batch
+    expect(batchPayload.name).toBe('Joao Silva');
 
-    expect(cfValues).toContainEqual(['Sim']); // fumante
-    expect(cfValues).toContainEqual('123.456.789-09'); // cpf com mascara
-    expect(cfValues).toContainEqual('1985-01-01'); // data ISO
-    expect(cfValues).toContainEqual('SP'); // estado via DDD
+    // Campos customizados enviados em array unico
+    const fields = batchPayload.contact_custom_fields as Array<{ custom_field_id: string; value: unknown }>;
+    expect(fields).toBeDefined();
+    expect(fields.length).toBeGreaterThanOrEqual(4);
+
+    const values = fields.map(f => f.value);
+    expect(values).toContainEqual(['Sim']); // fumante
+    expect(values).toContainEqual('123.456.789-09'); // cpf com mascara
+    expect(values).toContainEqual('1985-01-01'); // data ISO
+    expect(values).toContainEqual('SP'); // estado via DDD
   });
 });
