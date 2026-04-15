@@ -24,62 +24,65 @@ const FIELD_NAMES: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * Atualiza contato no RD Station — envia cada campo individualmente.
- * Se um campo falha (ex: CPF inválido já armazenado), os outros continuam.
+ * Atualiza contato no RD Station.
+ * Envia TODOS os campos customizados em uma única chamada (RD substitui o array inteiro no PUT).
+ * Campos nativos (nome, email) são enviados junto no mesmo batch.
+ * Se o batch falhar, retenta sem o CPF (campo mais comum de dar 422).
  */
 export async function safeUpdateContact(contactId: string, lead: Lead): Promise<void> {
   const fields = buildCustomFields(lead);
-  if (!lead.name && fields.length === 0) return;
+  if (!lead.name && !lead.email && fields.length === 0) return;
 
-  let succeeded = 0;
-  let failed = 0;
+  // Montar payload único com todos os dados
+  const payload: Record<string, unknown> = {};
+  if (lead.name) payload.name = lead.name;
+  if (lead.email) payload.emails = [{ email: lead.email }];
+  if (fields.length > 0) payload.contact_custom_fields = fields;
 
-  // Enviar nome separado
-  if (lead.name) {
-    try {
-      await updateContact(contactId, { name: lead.name });
-      succeeded++;
-    } catch (err) {
-      failed++;
-      logger.warn('RD update name failed', { phone: lead.phone, error: err instanceof Error ? err.message : String(err) });
+  try {
+    await updateContact(contactId, payload);
+    await logEvent('crm_sync', lead.phone, {
+      action: 'custom_fields_updated',
+      fieldsTotal: fields.length + (lead.name ? 1 : 0) + (lead.email ? 1 : 0),
+      succeeded: fields.length + (lead.name ? 1 : 0) + (lead.email ? 1 : 0),
+      failed: 0,
+    });
+    return;
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    // Se falhou com 422, tentar sem CPF (campo que mais causa erro de validação)
+    if (errMsg.includes('422') && fields.some((f) => f.custom_field_id === RD_CUSTOM_FIELDS.cpf)) {
+      logger.warn('RD batch update falhou (422), retentando sem CPF', { phone: lead.phone });
+      const fieldsNoCpf = fields.filter((f) => f.custom_field_id !== RD_CUSTOM_FIELDS.cpf);
+      const retryPayload: Record<string, unknown> = {};
+      if (lead.name) retryPayload.name = lead.name;
+      if (lead.email) retryPayload.emails = [{ email: lead.email }];
+      if (fieldsNoCpf.length > 0) retryPayload.contact_custom_fields = fieldsNoCpf;
+
+      try {
+        await updateContact(contactId, retryPayload);
+        await logEvent('crm_sync', lead.phone, {
+          action: 'custom_fields_partial',
+          fieldsTotal: fields.length,
+          succeeded: fieldsNoCpf.length + (lead.name ? 1 : 0),
+          failed: 1,
+          skipped_field: 'cpf',
+        });
+        return;
+      } catch (retryErr) {
+        logger.error('RD batch update sem CPF também falhou', { phone: lead.phone, error: retryErr instanceof Error ? retryErr.message : String(retryErr) });
+      }
     }
-  }
 
-  // Enviar email (campo nativo do RD Station)
-  if (lead.email) {
-    try {
-      await updateContact(contactId, { emails: [{ email: lead.email }] });
-      succeeded++;
-    } catch (err) {
-      failed++;
-      logger.warn('RD update email failed', { phone: lead.phone, error: err instanceof Error ? err.message : String(err) });
-    }
+    logger.error('RD safeUpdateContact falhou', { phone: lead.phone, error: errMsg });
+    await logError(lead.phone, { crm_update_failed: true }, err);
+    await logEvent('crm_sync', lead.phone, {
+      action: 'custom_fields_failed',
+      fieldsTotal: fields.length,
+      succeeded: 0,
+      failed: fields.length,
+    });
   }
-
-  // Enviar cada campo customizado individualmente
-  for (const field of fields) {
-    const fieldName = FIELD_NAMES[field.custom_field_id] || field.custom_field_id;
-    try {
-      await updateContact(contactId, { contact_custom_fields: [field] });
-      succeeded++;
-    } catch (err) {
-      failed++;
-      logger.warn('RD update field failed', {
-        phone: lead.phone,
-        field: fieldName,
-        value: typeof field.value === 'string' ? field.value.substring(0, 50) : field.value,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      await logError(lead.phone, { crm_field_failed: fieldName, field_id: field.custom_field_id }, err);
-    }
-  }
-
-  await logEvent('crm_sync', lead.phone, {
-    action: failed === 0 ? 'custom_fields_updated' : 'custom_fields_partial',
-    fieldsTotal: fields.length + (lead.name ? 1 : 0),
-    succeeded,
-    failed,
-  });
 }
 
 /**

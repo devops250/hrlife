@@ -9,14 +9,18 @@ export const FOLLOWUP_TEMPLATES = {
 } as const;
 
 /**
- * Verifica se já enviou follow-up deste stage para este lead.
+ * Verifica se já enviou (ou tentou demais) follow-up deste stage para este lead.
+ * Conta TODAS as tentativas (sucesso + falha) para evitar loop infinito quando WhatsApp desconecta.
  */
 async function alreadySentStage(phone: string, stage: number): Promise<boolean> {
   const result = await query(
-    "SELECT 1 FROM followup_log WHERE phone = $1 AND stage = $2 AND (success IS NULL OR success = true) LIMIT 1",
+    "SELECT COUNT(*) as attempts, COUNT(*) FILTER (WHERE success IS NULL OR success = true) as successes FROM followup_log WHERE phone = $1 AND stage = $2",
     [phone, stage],
   );
-  return result.rows.length > 0;
+  const attempts = parseInt(result.rows[0]?.attempts || '0', 10);
+  const successes = parseInt(result.rows[0]?.successes || '0', 10);
+  // Bloquear se já enviou com sucesso OU se já tentou 3 vezes (evita spam em caso de falha)
+  return successes > 0 || attempts >= 3;
 }
 
 export async function getNextStage(lead: Lead): Promise<{ stage: number; message: string } | null> {

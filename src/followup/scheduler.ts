@@ -7,6 +7,7 @@ import { enqueueForFollowup, getQueuedFollowups } from './queue';
 import { generateFirstMessage } from '../conversation/first-message';
 import { uazapi } from '../whatsapp/uazapi.client';
 import { logEvent, logError } from '../database/events.repo';
+import { incrementMetric } from '../monitoring/metrics';
 import { moveDealToStage } from '../crm/rdstation.service';
 import { env } from '../config/env';
 import { UazapiClient, NotOnWhatsAppError, WhatsAppDisconnectedError } from '../whatsapp/uazapi.client';
@@ -160,6 +161,7 @@ export async function processFollowups(): Promise<void> {
             [item.phone, item.stage, item.message],
           );
           await logEvent('followup_sent', item.phone, { stage: item.stage, source: 'queue' });
+          incrementMetric('followupsSent');
           sent++;
           await sleep(DELAY_BETWEEN_SENDS_MS);
         } catch (error) {
@@ -226,6 +228,7 @@ export async function processFollowups(): Promise<void> {
           [lead.phone, next.stage, next.message],
         );
         await logEvent('followup_sent', lead.phone, { stage: next.stage });
+        incrementMetric('followupsSent');
         sent++;
         await sleep(DELAY_BETWEEN_SENDS_MS);
       } catch (error) {

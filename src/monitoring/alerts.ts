@@ -186,6 +186,18 @@ async function sendDailySummary(): Promise<void> {
     const conversionRate = week7Total > 0 ? ((week7Scheduled / week7Total) * 100).toFixed(1) : '0.0';
     const summary = getMetricsSummary();
 
+    // Buscar respostas IA do banco (mais confiável que métrica in-memory que reseta com restart)
+    const aiResponsesResult = await query(
+      "SELECT COUNT(*) as count FROM events WHERE type = 'ai_response' AND created_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'",
+    );
+    const aiResponsesToday = parseInt(aiResponsesResult.rows[0]?.count || '0', 10);
+
+    // Buscar tool calls do banco
+    const toolCallsResult = await query(
+      "SELECT COUNT(*) as count FROM events WHERE type = 'tool_called' AND created_at >= CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'",
+    );
+    const toolCallsToday = parseInt(toolCallsResult.rows[0]?.count || '0', 10);
+
     // Buscar funil do RD Station
     const funnel = await fetchRDFunnel();
 
@@ -196,7 +208,8 @@ async function sendDailySummary(): Promise<void> {
 📈 HOJE
 ├ 📥 Leads novos: ${leadsToday}
 ├ 📅 Agendamentos: ${scheduledToday}
-├ 🤖 Respostas IA: ${summary.ai_responses}
+├ 🤖 Respostas IA: ${aiResponsesToday}
+├ 🔧 Tool calls: ${toolCallsToday}
 ├ 📤 Follow-ups: ${followupsToday}
 ├ ❌ Erros: ${errorsToday}
 └ ⏱️ Latência IA: ${summary.avg_ai_latency_ms}ms
@@ -326,6 +339,54 @@ O lead já recebeu confirmação com link do Google Meet.`;
   }
 }
 
+/**
+ * Monitor de saldo Anthropic — faz uma chamada mínima (max_tokens=1) para verificar se a API está funcional.
+ * Se retornar "credit balance too low", envia alerta via WhatsApp.
+ */
+async function checkAnthropicBalance(): Promise<void> {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: env.ANTHROPIC_MODEL,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ok' }],
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      if (body.includes('credit balance') || body.includes('too low')) {
+        await sendAlert(
+          '💰 CRÉDITOS ANTHROPIC ESGOTADOS!\n\n' +
+          'A Helena não consegue responder leads.\n' +
+          'Acesse console.anthropic.com → Plans & Billing para recarregar.\n\n' +
+          `API retornou: ${res.status}`,
+        );
+        logger.error('Anthropic sem créditos — alerta enviado', { status: res.status });
+      } else if (res.status === 401) {
+        await sendAlert(
+          '🔑 API KEY ANTHROPIC INVÁLIDA!\n\n' +
+          'A chave da API foi revogada ou está incorreta.\n' +
+          `API retornou: ${res.status}`,
+        );
+        logger.error('Anthropic API key inválida — alerta enviado', { status: res.status });
+      } else {
+        logger.warn('Anthropic health check falhou', { status: res.status, body: body.substring(0, 200) });
+      }
+    } else {
+      logger.info('Anthropic health check OK — créditos disponíveis');
+    }
+  } catch (error) {
+    logger.error('Erro ao verificar saldo Anthropic', { error: String(error) });
+  }
+}
+
 export function startAlertScheduler(): void {
   // Check a cada 2 minutos
   cron.schedule('*/2 * * * *', () => {
@@ -342,6 +403,14 @@ export function startAlertScheduler(): void {
     });
   });
   logger.info('Resumo diário registrado (20h São Paulo)');
+
+  // Monitor de saldo Anthropic — 09h e 15h São Paulo (12:00 e 18:00 UTC)
+  cron.schedule('0 12,18 * * *', () => {
+    checkAnthropicBalance().catch((err) => {
+      logger.error('Erro ao verificar saldo Anthropic', { error: err });
+    });
+  });
+  logger.info('Monitor de saldo Anthropic registrado (09h e 15h São Paulo)');
 }
 
 export { sendAlert };
