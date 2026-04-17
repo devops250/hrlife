@@ -130,6 +130,19 @@ async function execConsultaHorario(args: Record<string, string>): Promise<string
 async function execRegistraAgendamento(args: Record<string, string>, phone: string): Promise<string> {
   try {
     const { data, horario, nome_lead } = args;
+
+    // Bloquear agendamento duplo: se já tem agendamento, cancelar o anterior
+    const currentLead = await findLeadByPhone(phone);
+    if (currentLead?.scheduled && currentLead.name) {
+      try {
+        const existingEvent = await findEventByLeadName(currentLead.name);
+        if (existingEvent) {
+          await deleteEvent(existingEvent.id);
+          logger.info('Agendamento anterior cancelado (re-agendamento)', { phone, eventId: existingEvent.id });
+        }
+      } catch { /* best effort — continua mesmo se falhar */ }
+    }
+
     const startDateTime = `${data}T${horario}:00`;
     const startDate = new Date(`${data}T${horario}:00`);
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
