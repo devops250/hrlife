@@ -15,6 +15,9 @@ import { addToBuffer } from '../conversation/message-buffer';
 import { incrementMetric } from '../monitoring/metrics';
 import { syncIncomingMessage } from '../chatwoot/sync';
 import { processIncomingLead } from './lead-pipeline';
+import { generateFirstMessages } from '../conversation/first-message';
+import { addMessage } from '../database/conversations.repo';
+import { updateLeadIaMessage } from '../database/leads.repo';
 
 const POSITIVE_REACTIONS = ['👍', '🥳', '❤️', '✅', '❤', '😄', '💪'];
 const NEGATIVE_REACTIONS = ['👎', '❌'];
@@ -99,6 +102,7 @@ export async function whatsappHandler(req: Request, res: Response): Promise<void
 
     // Buscar ou criar lead (via pipeline para novos)
     let lead = await findLeadByPhone(phone);
+    const isNewLead = !lead;
     if (!lead) {
       // Pipeline cuida de: criar lead, sync CRM, notificar Gabriel
       await processIncomingLead({ phone, source: 'whatsapp' });
@@ -118,6 +122,23 @@ export async function whatsappHandler(req: Request, res: Response): Promise<void
 
     // Atualizar lead
     await updateLeadOnMessage(phone);
+
+    // Detectar mensagem de formulário em novo lead → enviar welcome template em vez do engine
+    const isFormMessage = isNewLead && text.includes('formulário');
+    if (isFormMessage) {
+      logger.info('Mensagem de formulário detectada em novo lead WhatsApp → enviando welcome template', { phone });
+      await addMessage(phone, 'user', text);
+      const [greeting, details] = generateFirstMessages(lead.name || 'Olá');
+      await uazapi.sendText(phone, greeting);
+      await new Promise((r) => setTimeout(r, 2000));
+      await uazapi.sendText(phone, details);
+      const fullMessage = `${greeting}\n\n${details}`;
+      await addMessage(phone, 'assistant', fullMessage);
+      await updateLeadIaMessage(phone);
+      await logEvent('first_message_sent', phone, { source: 'whatsapp_form_detected' });
+      syncIncomingMessage(phone, lead.name || '', text).catch(() => {});
+      return;
+    }
 
     // Buffer de mensagens
     let msgType: 'text' | 'audio' | 'image' = 'text';
