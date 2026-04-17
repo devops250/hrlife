@@ -123,6 +123,7 @@ async function fetchRDFunnel(): Promise<Record<string, number>> {
     'Proposta Enviada': 0,
     'Convertido': 0,
     'Sem Retorno': 0,
+    'Perdido': 0,
   };
 
   try {
@@ -137,6 +138,7 @@ async function fetchRDFunnel(): Promise<Record<string, number>> {
       [env.RD_STAGE_PROPOSTA_ENVIADA]: 'Proposta Enviada',
       [env.RD_STAGE_CONVERTIDO]: 'Convertido',
       [env.RD_STAGE_SEM_RETORNO]: 'Sem Retorno',
+      [env.RD_STAGE_PERDIDO]: 'Perdido',
     };
 
     // Buscar deals do pipeline
@@ -220,7 +222,8 @@ async function sendDailySummary(): Promise<void> {
 ├ 📋 Estudo Apresentado: ${funnel['Estudo Apresentado']}
 ├ 📄 Proposta Enviada: ${funnel['Proposta Enviada']}
 ├ ✅ Convertido: ${funnel['Convertido']}
-└ ❌ Sem Retorno: ${funnel['Sem Retorno']}
+├ ❌ Sem Retorno: ${funnel['Sem Retorno']}
+└ 🚫 Perdido: ${funnel['Perdido']}
 
 📉 MÉTRICAS GERAIS
 ├ Total leads: ${totalLeads} (${syncedLeads} no CRM)

@@ -281,15 +281,17 @@ export async function processFollowups(): Promise<void> {
         );
 
         if (lead.rd_deal_id) {
+          // Sem Retorno (registro histórico) → Perdido (estágio final)
           await moveDealToStage(lead.rd_deal_id, env.RD_STAGE_SEM_RETORNO);
+          await moveDealToStage(lead.rd_deal_id, env.RD_STAGE_PERDIDO);
         }
 
         await logEvent('followup_exhausted', lead.phone, {
           rd_deal_id: lead.rd_deal_id,
-          stage: 'sem_retorno',
+          stage: 'perdido',
         });
         closed++;
-        logger.info('Lead esgotou follow-ups, movido para Sem Retorno', { phone: lead.phone });
+        logger.info('Lead esgotou follow-ups, movido para Perdido', { phone: lead.phone });
       } catch (error) {
         logger.error('Erro ao encerrar lead esgotado', { phone: lead.phone, error });
       }

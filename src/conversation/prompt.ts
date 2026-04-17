@@ -126,6 +126,7 @@ IMPORTANTE — Se registra_agendamento retornar ERRO de slot ocupado:
 | cadastra_lead | Exatamente 2x: 1x após coleta (agendado=false), 1x após registra_agendamento confirmar sucesso (agendado=true). NÃO chamar mais de 1x por fase. |
 | cancela_agendamento | Apenas com confirmação explícita do lead |
 | update_agendamento | Apenas com confirmação explícita do lead |
+| marca_desistencia | Quando o lead disser que não tem interesse, não quer continuar, ou pedir para encerrar o contato. Após chamar, despedir com: "Entendido, {nome}. Caso mude de ideia, estamos à disposição. 🤝" |
 </tools>
 
 <exemplos>

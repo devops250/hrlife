@@ -11,6 +11,7 @@
 import { logger } from '../utils/logger';
 import { findLeadByPhone, updateLeadData } from '../database/leads.repo';
 import { logEvent } from '../database/events.repo';
+import { env } from '../config/env';
 import { getNextAvailableSlots } from '../scheduling/availability';
 import { createEvent, deleteEvent, updateEvent, findEventByLeadName, listEvents, checkFreeBusy } from '../scheduling/calendar.service';
 import { syncLeadCreated, syncLeadScheduled } from '../crm/sync';
@@ -35,6 +36,8 @@ export async function executeTool(name: string, args: Record<string, string>, ph
       return execRegistraAgendamento(args, phone);
     case 'cancela_agendamento':
       return execCancelaAgendamento(args, phone);
+    case 'marca_desistencia':
+      return execMarcaDesistencia(args, phone);
     case 'update_agendamento':
       return execUpdateAgendamento(args, phone);
     default:
@@ -220,5 +223,38 @@ async function execUpdateAgendamento(args: Record<string, string>, phone: string
   } catch (error) {
     logger.error('Erro ao reagendar', { phone, error });
     return 'Erro ao reagendar. Peça desculpas ao lead e tente novamente.';
+  }
+}
+
+async function execMarcaDesistencia(args: Record<string, string>, phone: string): Promise<string> {
+  try {
+    const lead = await findLeadByPhone(phone);
+    if (!lead) return 'Lead não encontrado no sistema.';
+
+    await updateLeadData(phone, { status: 'lost' });
+
+    if (lead.rd_deal_id) {
+      const { moveDealToStage } = await import('../crm/rdstation.service');
+      await moveDealToStage(lead.rd_deal_id, env.RD_STAGE_PERDIDO);
+    }
+
+    // Cancelar agendamento se houver
+    if (lead.scheduled && lead.name) {
+      try {
+        const event = await findEventByLeadName(lead.name);
+        if (event) await deleteEvent(event.id);
+      } catch { /* best effort */ }
+    }
+
+    await logEvent('lead_lost', phone, {
+      motivo: args.motivo || 'desistência explícita',
+      rd_deal_id: lead.rd_deal_id,
+    });
+    logger.info('Lead marcado como perdido (desistência)', { phone, motivo: args.motivo });
+
+    return `Lead ${args.nome_lead} marcado como desistente. Encerrar conversa com mensagem de despedida.`;
+  } catch (error) {
+    logger.error('Erro ao marcar desistência', { phone, error });
+    return 'Erro ao registrar desistência. Peça desculpas ao lead.';
   }
 }

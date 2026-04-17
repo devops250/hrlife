@@ -72,6 +72,24 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'marca_desistencia',
+    description: 'Marca que o lead desistiu explicitamente do processo. Usar quando o lead disser que não tem interesse, não quer continuar, ou pedir para encerrar o contato.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        nome_lead: {
+          type: 'string',
+          description: 'Nome do lead',
+        },
+        motivo: {
+          type: 'string',
+          description: 'Motivo da desistência informado pelo lead',
+        },
+      },
+      required: ['nome_lead'],
+    },
+  },
+  {
     name: 'update_agendamento',
     description: 'Reagenda a apresentação para um novo horário. Usar apenas após confirmação explícita do lead.',
     input_schema: {
