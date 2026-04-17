@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 import { isBusinessHours } from '../config/schedule';
 import { getNextStage } from './stages';
 import { enqueueForFollowup, getQueuedFollowups } from './queue';
-import { generateFirstMessage } from '../conversation/first-message';
+import { generateFirstMessages, generateFirstMessage } from '../conversation/first-message';
 import { uazapi } from '../whatsapp/uazapi.client';
 import { logEvent, logError } from '../database/events.repo';
 import { incrementMetric } from '../monitoring/metrics';
@@ -79,10 +79,12 @@ async function retryPendingFirstMessages(): Promise<number> {
   let retried = 0;
   for (const lead of result.rows as Array<{ phone: string; name: string | null; source: string }>) {
     try {
-      const msg = generateFirstMessage(lead.name || 'Olá');
-      await uazapi.sendText(lead.phone, msg);
+      const [greeting, details] = generateFirstMessages(lead.name || 'Olá');
+      await uazapi.sendText(lead.phone, greeting);
+      await sleep(DELAY_BETWEEN_SENDS_MS);
+      await uazapi.sendText(lead.phone, details);
       await query('UPDATE leads SET last_ia_message = NOW(), updated_at = NOW() WHERE phone = $1', [lead.phone]);
-      await query('INSERT INTO followup_log (phone, stage, message) VALUES ($1, 0, $2)', [lead.phone, msg]);
+      await query('INSERT INTO followup_log (phone, stage, message) VALUES ($1, 0, $2)', [lead.phone, `${greeting}\n\n${details}`]);
       await logEvent('first_message_sent', lead.phone, { source: lead.source, retry: true });
       logger.info('Primeira mensagem reenviada (retry)', { phone: lead.phone });
       retried++;

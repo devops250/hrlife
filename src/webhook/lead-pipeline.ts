@@ -16,7 +16,7 @@ import { findLeadByPhone, createLead, updateLeadName, updateLeadIaMessage, updat
 import { query } from '../database/client';
 import { logEvent, logError } from '../database/events.repo';
 import { uazapi, NotOnWhatsAppError } from '../whatsapp/uazapi.client';
-import { generateFirstMessage } from '../conversation/first-message';
+import { generateFirstMessages, generateFirstMessage } from '../conversation/first-message';
 import { syncLeadCreated, syncLeadBasic } from '../crm/sync';
 import { incrementMetric } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
@@ -106,14 +106,17 @@ export async function processIncomingLead(input: IncomingLead): Promise<Pipeline
     // 6. Enviar primeira mensagem (apenas para leads de formulário, não WhatsApp direto)
     if (input.source !== 'whatsapp') {
       try {
-        const firstMessage = generateFirstMessage(input.name || 'Olá');
-        await uazapi.sendText(phone, firstMessage);
+        const [greeting, details] = generateFirstMessages(input.name || 'Olá');
+        await uazapi.sendText(phone, greeting);
+        await new Promise((r) => setTimeout(r, 2000));
+        await uazapi.sendText(phone, details);
         await updateLeadIaMessage(phone);
         await logEvent('first_message_sent', phone, { source: input.source });
-        logger.info('Pipeline: primeira mensagem enviada', { phone, source: input.source });
+        logger.info('Pipeline: primeira mensagem enviada (2 balões)', { phone, source: input.source });
 
-        // Espelhar no Chatwoot (assíncrono)
-        syncOutgoingMessage(phone, firstMessage).catch((err) =>
+        // Espelhar no Chatwoot (assíncrono — texto completo para histórico)
+        const fullMessage = `${greeting}\n\n${details}`;
+        syncOutgoingMessage(phone, fullMessage).catch((err) =>
           logger.warn('Chatwoot sync falhou', { phone, error: err }),
         );
       } catch (sendError) {
