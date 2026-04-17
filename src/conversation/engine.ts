@@ -22,6 +22,7 @@ import { query } from '../database/client';
 import { incrementMetric, trackAiLatency } from '../monitoring/metrics';
 import { syncOutgoingMessage } from '../chatwoot/sync';
 import { notifyProblem } from '../monitoring/alerts';
+import { splitResponse } from '../whatsapp/message-anatomy';
 
 const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
@@ -131,8 +132,9 @@ export async function processConversation(phone: string, chatInput: string): Pro
       return;
     }
 
-    // Salvar conversa
-    await addMessage(phone, 'assistant', text);
+    // Salvar conversa (texto completo, sem delimitadores)
+    const cleanText = text.replace(/\n---\n/g, '\n');
+    await addMessage(phone, 'assistant', cleanText);
     await updateLeadIaMessage(phone);
 
     // Métricas
@@ -143,15 +145,30 @@ export async function processConversation(phone: string, chatInput: string): Pro
     incrementMetric('totalResponseTimeMs', latency);
     incrementMetric('responseCount');
 
-    // Espelhar no Chatwoot
-    syncOutgoingMessage(phone, text).catch((err) =>
+    // Espelhar no Chatwoot (texto limpo)
+    syncOutgoingMessage(phone, cleanText).catch((err) =>
       logger.warn('Chatwoot sync outgoing falhou', { phone, error: err }),
     );
 
-    // Enviar via WhatsApp
+    // Anatomia da Mensagem: splittar em blocos e enviar com delay humanizado
+    const blocks = splitResponse(text);
+    logger.info('Anatomia da mensagem', { phone, blocos: blocks.length, categorias: blocks.map((b) => b.category) });
+
     try {
-      await uazapi.sendText(phone, text);
-      logger.info('Resposta enviada', { phone, latency_ms: latency });
+      for (let i = 0; i < blocks.length; i++) {
+        try {
+          await uazapi.sendText(phone, blocks[i].text);
+        } catch (blockError) {
+          if (blockError instanceof NotOnWhatsAppError) throw blockError;
+          logger.error('Falha ao enviar bloco (continuando)', { phone, bloco: i + 1, error: blockError });
+          continue;
+        }
+        // Delay entre blocos (não após o último)
+        if (i < blocks.length - 1) {
+          await new Promise((r) => setTimeout(r, blocks[i].delayMs));
+        }
+      }
+      logger.info('Resposta enviada', { phone, latency_ms: latency, blocos: blocks.length });
     } catch (sendError) {
       if (sendError instanceof NotOnWhatsAppError) {
         await query("UPDATE leads SET status = 'invalid_phone', updated_at = NOW() WHERE phone = $1", [phone]);
